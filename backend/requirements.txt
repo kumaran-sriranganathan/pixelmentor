@@ -1,0 +1,35 @@
+# PixelMentor Backend Dependencies
+
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+gunicorn==23.0.0
+python-multipart==0.0.20
+
+# Settings + validation
+pydantic-settings==2.6.1
+
+# Azure core (explicit to avoid transitive version conflicts)
+azure-core==1.32.0
+
+# Azure OpenAI + AI Services
+openai>=1.58.1
+azure-ai-vision-imageanalysis==1.0.0
+azure-search-documents==11.4.0
+azure-identity==1.19.0
+
+# Cosmos DB
+azure-cosmos==4.9.0
+
+# Blob Storage
+azure-storage-blob==12.23.1
+
+# Agentic AI
+langgraph==0.2.58
+
+# Auth
+python-jose[cryptography]==3.3.0
+httpx==0.27.2
+
+# Monitoring
+azure-monitor-opentelemetry==1.6.4
