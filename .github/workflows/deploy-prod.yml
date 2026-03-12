@@ -65,8 +65,13 @@ jobs:
   terraform-plan:
     name: Terraform Plan (Prod)
     runs-on: ubuntu-latest
-    environment: prod-plan   # No approval required — just shows the plan
+    environment: prod-plan
     needs: backend-tests
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PROD }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: "true"
 
     steps:
       - name: Checkout
