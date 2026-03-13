@@ -105,9 +105,9 @@ resource "azurerm_private_dns_zone_virtual_network_link" "links" {
 output "vnet_id"                      { value = azurerm_virtual_network.main.id }
 output "container_apps_subnet_id"     { value = azurerm_subnet.container_apps.id }
 output "private_endpoint_subnet_id"   { value = azurerm_subnet.private_endpoints.id }
-output "openai_private_dns_zone_id"   { value = azurerm_private_dns_zone.zones["openai"].id }
-output "blob_private_dns_zone_id"     { value = azurerm_private_dns_zone.zones["blob"].id }
-output "cosmos_private_dns_zone_id"   { value = azurerm_private_dns_zone.zones["cosmos"].id }
-output "search_private_dns_zone_id"   { value = azurerm_private_dns_zone.zones["search"].id }
-output "vault_private_dns_zone_id"    { value = azurerm_private_dns_zone.zones["vault"].id }
-output "acr_private_dns_zone_id"      { value = azurerm_private_dns_zone.zones["acr"].id }
+output "openai_private_dns_zone_id"   { value = try(azurerm_private_dns_zone.zones["openai"].id, null) }
+output "blob_private_dns_zone_id"     { value = try(azurerm_private_dns_zone.zones["blob"].id, null) }
+output "cosmos_private_dns_zone_id"   { value = try(azurerm_private_dns_zone.zones["cosmos"].id, null) }
+output "search_private_dns_zone_id"   { value = try(azurerm_private_dns_zone.zones["search"].id, null) }
+output "vault_private_dns_zone_id"    { value = try(azurerm_private_dns_zone.zones["vault"].id, null) }
+output "acr_private_dns_zone_id"      { value = try(azurerm_private_dns_zone.zones["acr"].id, null) }
