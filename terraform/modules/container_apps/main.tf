@@ -148,7 +148,7 @@ resource "azurerm_container_app" "api" {
   ingress {
     external_enabled = true
     target_port      = 8000
-    transport        = "http2"
+    transport = "auto"
 
     traffic_weight {
       percentage      = 100
