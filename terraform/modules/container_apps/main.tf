@@ -34,6 +34,10 @@ resource "azurerm_container_app_environment" "main" {
 }
 
 resource "azurerm_container_app" "api" {
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
   name                         = "pm-${var.environment}-api"
   container_app_environment_id = azurerm_container_app_environment.main.id
   resource_group_name          = var.resource_group_name
