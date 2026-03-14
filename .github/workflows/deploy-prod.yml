@@ -139,7 +139,7 @@ jobs:
     name: Terraform Apply (Prod)
     runs-on: ubuntu-latest
     environment: prod
-    needs: terraform-apply
+    needs: await-approval
 
     steps:
       - name: Checkout
