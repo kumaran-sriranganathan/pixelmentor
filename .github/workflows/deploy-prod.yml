@@ -140,42 +140,14 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod
     needs: await-approval
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PROD }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: "true"
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login (OIDC — Prod)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Download Plan
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prod
-          path: ${{ env.TF_WORKING_DIR }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.8.x"
-          terraform_wrapper: false
-
-      - name: Terraform Init
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=pixelmentor-prod-rg" \
-            -backend-config="storage_account_name=pmprodstprod01" \
-            -backend-config="container_name=tfstate" \
-            -backend-config="key=pixelmentor.prod.tfstate"
-
-      - name: Terraform Apply (saved plan)
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform apply -auto-approve tfplan
 
   # ─────────────────────────────────────────────
   # 5. Build & Push Docker Image (Prod ACR)
