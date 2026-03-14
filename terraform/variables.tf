@@ -51,3 +51,9 @@ variable "suffix_override" {
   type        = string
   default     = ""
 }
+
+variable "search_sku" {
+  description = "Azure AI Search SKU (free | basic | standard)"
+  type        = string
+  default     = "basic"
+}
