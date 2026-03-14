@@ -95,8 +95,8 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform init \
-            -backend-config="resource_group_name=pixelmentor-prod-rg" \
-            -backend-config="storage_account_name=pmprodstprod01" \
+            -backend-config="resource_group_name=pixelmentor-tfstate-rg" \
+            -backend-config="storage_account_name=pmtfstate26822a" \
             -backend-config="container_name=tfstate" \
             -backend-config="key=pixelmentor.prod.tfstate"
 
@@ -168,8 +168,8 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform init \
-            -backend-config="resource_group_name=pixelmentor-prod-rg" \
-            -backend-config="storage_account_name=pmprodstprod01" \
+            -backend-config="resource_group_name=pixelmentor-tfstate-rg" \
+            -backend-config="storage_account_name=pmtfstate26822a" \
             -backend-config="container_name=tfstate" \
             -backend-config="key=pixelmentor.prod.tfstate"
 
