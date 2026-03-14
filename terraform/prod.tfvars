@@ -1,0 +1,9 @@
+environment         = "prod"
+location            = "australiaeast"
+openai_sku          = "S0"
+gpt4o_capacity      = 10
+cosmos_throughput   = "serverless"
+container_image_tag = "latest"
+alert_email         = "kumaran.snz@gmail.com"
+suffix_override     = "prod01"
+search_sku          = "free"
