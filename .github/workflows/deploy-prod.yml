@@ -139,12 +139,7 @@ jobs:
     name: Terraform Apply (Prod)
     runs-on: ubuntu-latest
     environment: prod
-    needs: await-approval
-    env:
-      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PROD }}
-      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      ARM_USE_OIDC: "true"
+    needs: terraform-apply
 
     steps:
       - name: Checkout
@@ -189,7 +184,7 @@ jobs:
     name: Build & Push Image (Prod)
     runs-on: ubuntu-latest
     environment: prod
-    needs: await-approval
+    needs: terraform-apply        # ← change from await-approval to terraform-apply
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
 
