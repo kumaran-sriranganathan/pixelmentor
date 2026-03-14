@@ -140,6 +140,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod
     needs: await-approval
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PROD }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: "true"
 
     steps:
       - name: Checkout
