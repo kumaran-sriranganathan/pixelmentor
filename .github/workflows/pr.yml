@@ -52,10 +52,10 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform init \
-            -backend-config="resource_group_name=pixelmentor-dev-rg" \
-            -backend-config="storage_account_name=pmdevstdev01" \
+            -backend-config="resource_group_name=pixelmentor-tfstate-rg" \
+            -backend-config="storage_account_name=pmtfstate26822a" \
             -backend-config="container_name=tfstate" \
-            -backend-config="key=pixelmentor.dev.tfstate"
+            -backend-config="key=pixelmentor.terraform.tfstate"
 
       - name: Terraform Validate
         working-directory: ${{ env.TF_WORKING_DIR }}
