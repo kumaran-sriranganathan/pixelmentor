@@ -139,7 +139,7 @@ jobs:
     name: Terraform Apply (Prod)
     runs-on: ubuntu-latest
     environment: prod
-    needs: await-approval
+    needs: terraform-apply
 
     steps:
       - name: Checkout
@@ -184,7 +184,7 @@ jobs:
     name: Build & Push Image (Prod)
     runs-on: ubuntu-latest
     environment: prod
-    needs: await-approval
+    needs: terraform-apply        # ← change from await-approval to terraform-apply
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
 
