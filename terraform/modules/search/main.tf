@@ -11,11 +11,13 @@ variable "subnet_id"           {}
 variable "private_dns_zone_id" {}
 variable "tags"                {}
 
+variable "sku = var.sku }
+
 resource "azurerm_search_service" "main" {
   name                          = "pm-${var.environment}-search-${var.suffix}"
   location                      = var.location
   resource_group_name           = var.resource_group_name
-  sku                           = "basic"
+  sku = var.sku
   replica_count                 = 1
   partition_count               = 1
   public_network_access_enabled = true
