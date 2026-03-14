@@ -166,6 +166,7 @@ module "search" {
   key_vault_id        = module.security.key_vault_id
   subnet_id           = module.networking.private_endpoint_subnet_id
   private_dns_zone_id = module.networking.search_private_dns_zone_id
+  sku                 = var.search_sku
   tags                = local.tags
 
   depends_on = [module.security]   # Waits for RBAC to propagate
