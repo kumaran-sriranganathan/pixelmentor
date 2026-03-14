@@ -13,7 +13,7 @@ env:
   AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PROD }}
   AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-  ACR_LOGIN_SERVER: pmprodacr.azurecr.io           # Prod ACR (set after prod infra deployed)
+  ACR_LOGIN_SERVER: pmprodacrprod01.azurecr.io           # Prod ACR (set after prod infra deployed)
   CONTAINER_APP_NAME: pm-prod-api
   RESOURCE_GROUP: pixelmentor-prod-rg
   TF_WORKING_DIR: terraform
@@ -198,7 +198,7 @@ jobs:
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Login to Prod ACR
-        run: az acr login --name pmprodacr
+        run: az acr login --name pmprodacrprod01
 
       - name: Generate Image Tag
         id: meta
