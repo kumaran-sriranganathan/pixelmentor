@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     allowed_hosts: List[str] = ["*"]
     allowed_origins: List[str] = ["http://localhost:3000", "http://10.0.2.2:3000"]
 
-    # Azure OpenAI — defaults allow app to start without crashing; real values needed for AI features
+    # Azure OpenAI
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
     azure_openai_api_version: str = "2025-01-01"
@@ -42,9 +42,11 @@ class Settings(BaseSettings):
     azure_search_key: str = ""
     lessons_index: str = "photography-lessons"
 
-    # Azure AD (for token validation)
-    azure_tenant_id: str = ""
-    azure_client_id: str = ""
+    # Microsoft Entra External ID (replaces Azure AD B2C)
+    entra_tenant_name: str = "pixelmentor"           # pixelmentor.onmicrosoft.com
+    entra_tenant_id: str = ""                         # Directory (tenant) ID from Entra portal
+    entra_api_client_id: str = ""                     # PixelMentor API app client ID
+    entra_android_client_id: str = ""                 # PixelMentor Android app client ID
 
     # Monitoring
     app_insights_connection_string: str = ""
