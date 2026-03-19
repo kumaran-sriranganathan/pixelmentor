@@ -25,6 +25,21 @@ variable "identity_id"                    {}
 variable "identity_client_id"             {}
 variable "tags"                           {}
 
+variable "entra_tenant_id" {
+  sensitive = true
+  default   = ""
+}
+
+variable "entra_api_client_id" {
+  sensitive = true
+  default   = ""
+}
+
+variable "entra_android_client_id" {
+  sensitive = true
+  default   = ""
+}
+
 resource "azurerm_container_app_environment" "main" {
   name                       = "pm-${var.environment}-cae-${var.suffix}"
   location                   = var.location
@@ -56,6 +71,18 @@ resource "azurerm_container_app" "api" {
 
   # Secrets stored as Container App secrets (encrypted at rest by Azure)
   secret {
+	name  = "entra-tenant-id"
+	value = var.entra_tenant_id
+  }
+  secret {
+	name  = "entra-api-client-id"
+	value = var.entra_api_client_id
+  }
+  secret {
+    name  = "entra-android-client-id"
+    value = var.entra_android_client_id
+  }
+  secret {
     name  = "openai-api-key"
     value = var.openai_api_key
   }
@@ -70,6 +97,18 @@ resource "azurerm_container_app" "api" {
   secret {
     name  = "search-admin-key"
     value = var.search_key
+  }
+  secret {
+	name  = "entra-tenant-id"
+	value = var.entra_tenant_id
+  }
+  secret {
+	name  = "entra-api-client-id"
+	value = var.entra_api_client_id
+  }
+  secret {
+	name  = "entra-android-client-id"
+	value = var.entra_android_client_id
   }
 
   template {
@@ -122,6 +161,18 @@ resource "azurerm_container_app" "api" {
         name        = "AZURE_SEARCH_KEY"
         secret_name = "search-admin-key"
       }
+	  env {
+		name        = "ENTRA_TENANT_ID"
+		secret_name = "entra-tenant-id"
+	  }
+	  env {
+		name        = "ENTRA_API_CLIENT_ID"
+		secret_name = "entra-api-client-id"
+	  }
+	  env {
+		name        = "ENTRA_ANDROID_CLIENT_ID"
+		secret_name = "entra-android-client-id"
+	  }
 
       liveness_probe {
         transport               = "HTTP"
