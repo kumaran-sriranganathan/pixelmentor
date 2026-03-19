@@ -24,9 +24,21 @@ variable "container_image_tag"            { default = "latest" }
 variable "identity_id"                    {}
 variable "identity_client_id"             {}
 variable "tags"                           {}
-variable "entra_tenant_id"         { sensitive = true  default = "" }
-variable "entra_api_client_id"     { sensitive = true  default = "" }
-variable "entra_android_client_id" { sensitive = true  default = "" }
+
+variable "entra_tenant_id" {
+  sensitive = true
+  default   = ""
+}
+
+variable "entra_api_client_id" {
+  sensitive = true
+  default   = ""
+}
+
+variable "entra_android_client_id" {
+  sensitive = true
+  default   = ""
+}
 
 resource "azurerm_container_app_environment" "main" {
   name                       = "pm-${var.environment}-cae-${var.suffix}"
