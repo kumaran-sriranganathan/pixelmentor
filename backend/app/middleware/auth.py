@@ -16,9 +16,14 @@ security = HTTPBearer()
 # Microsoft Entra External ID JWKS endpoint
 # Format: https://<tenant>.ciamlogin.com/<tenant>.onmicrosoft.com/discovery/v2.0/keys
 JWKS_URL = (
-    f"https://{settings.entra_tenant_name}.ciamlogin.com"
-    f"/{settings.entra_tenant_name}.onmicrosoft.com"
-    f"/discovery/v2.0/keys"
+    f"https://{settings.entra_tenant_id}.ciamlogin.com"
+    f"/{settings.entra_tenant_id}/discovery/v2.0/keys"
+)
+
+# Expected token issuer
+ISSUER = (
+    f"https://{settings.entra_tenant_id}.ciamlogin.com"
+    f"/{settings.entra_tenant_id}/v2.0"
 )
 
 # Expected token issuer
