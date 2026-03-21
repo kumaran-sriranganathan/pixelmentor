@@ -2,9 +2,11 @@
 # routers/lessons.py — Lesson library endpoints
 ###############################################################################
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from pydantic import BaseModel
+
+from app.middleware.auth import get_current_user
 
 router = APIRouter()
 
@@ -26,16 +28,21 @@ SAMPLE_LESSONS = [
 
 
 @router.get("/", response_model=List[Lesson])
-async def get_lessons(skill_level: str = None):
+async def get_lessons(
+    skill_level: str = None,
+    current_user: dict = Depends(get_current_user)
+):
     if skill_level:
         return [l for l in SAMPLE_LESSONS if l.skill_level == skill_level]
     return SAMPLE_LESSONS
 
 
 @router.get("/{lesson_id}", response_model=Lesson)
-async def get_lesson(lesson_id: str):
+async def get_lesson(
+    lesson_id: str,
+    current_user: dict = Depends(get_current_user)
+):
     for lesson in SAMPLE_LESSONS:
         if lesson.id == lesson_id:
             return lesson
-    from fastapi import HTTPException
     raise HTTPException(status_code=404, detail="Lesson not found")
