@@ -35,7 +35,7 @@ MOCK_USER = {
 }
 
 
-async def _mock_user():
+async def _mock_get_current_user():
     return MOCK_USER
 
 
@@ -63,7 +63,7 @@ def client():
     Standard test client — auth dependency overridden with MOCK_USER.
     Use this for all endpoint logic tests.
     """
-    app.dependency_overrides[get_current_user] = lambda: _mock_user
+    app.dependency_overrides[get_current_user] = _mock_get_current_user
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
