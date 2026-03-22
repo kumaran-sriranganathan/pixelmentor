@@ -27,7 +27,7 @@ async def get_user(
     current_user: dict = Depends(get_current_user)
 ):
     # Ensure users can only access their own profile
-    if current_user.get("sub") != user_id and current_user.get("sub") != "dev-user-123":
+    if current_user.get("sub") != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     return UserProfile(

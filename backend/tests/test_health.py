@@ -1,222 +1,251 @@
 ###############################################################################
-# tests/test_health.py — Real backend tests for PixelMentor API
+# tests/test_health.py — PixelMentor backend tests
+#
+# Auth strategy
+# -------------
+# get_current_user() has a hard bypass: if settings.environment == "dev" it
+# returns a mock user without touching JWT logic at all.  CI runs with
+# ENVIRONMENT=dev, so ALL tests use FastAPI dependency_overrides to inject a
+# known user — this works regardless of the environment value and avoids any
+# real network calls to Entra.
+#
+# Tests that need to exercise real auth logic (401, JWKS cache) patch
+# app.middleware.auth.settings directly on the module-level name so that
+# get_current_user() sees a non-dev environment.
 ###############################################################################
 
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
+from jose import JWTError
 
 from app.main import app
-from app.config import settings
+from app.middleware.auth import get_current_user
+import app.middleware.auth as auth_module
+
+# ── Shared mock identity ───────────────────────────────────────────────────────
+
+MOCK_USER = {
+    "sub": "dev-user-123",
+    "email": "dev@pixelmentor.com",
+    "name": "Dev User",
+    "given_name": "Dev",
+    "family_name": "User",
+}
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+async def _mock_user():
+    return MOCK_USER
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _make_settings(environment: str):
+    """Return a settings-like object with environment overridden."""
+    from app.config import get_settings
+    original = get_settings()
+
+    class _Patched:
+        def __getattr__(self, name):
+            if name == "environment":
+                return environment
+            return getattr(original, name)
+
+    return _Patched()
+
+
+# ── Fixtures ───────────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def client():
-    """Test client with dev environment (mock auth bypassed)."""
+    """
+    Standard test client — auth dependency overridden with MOCK_USER.
+    Use this for all endpoint logic tests.
+    """
+    app.dependency_overrides[get_current_user] = lambda: _mock_user
     with TestClient(app) as c:
         yield c
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def auth_headers():
-    """Fake Bearer token header — accepted in dev environment only."""
-    return {"Authorization": "Bearer mock-dev-token"}
+def client_real_auth():
+    """
+    Test client with no dependency override and environment forced to prod
+    so real JWT validation runs inside get_current_user.
+    """
+    app.dependency_overrides.clear()
+    with patch.object(auth_module, "settings", _make_settings("prod")):
+        with TestClient(app) as c:
+            yield c
 
 
-# ── Health Endpoints ───────────────────────────────────────────────────────────
+# ── Health ─────────────────────────────────────────────────────────────────────
 
 class TestHealth:
-    def test_liveness_returns_200(self, client):
-        response = client.get("/health")
-        assert response.status_code == 200
+    def test_liveness_200(self, client):
+        assert client.get("/health").status_code == 200
 
-    def test_liveness_returns_alive_status(self, client):
-        data = client.get("/health").json()
-        assert data["status"] == "alive"
+    def test_liveness_status_field(self, client):
+        assert client.get("/health").json()["status"] == "alive"
 
-    def test_liveness_returns_environment(self, client):
-        data = client.get("/health").json()
-        assert "environment" in data
+    def test_liveness_environment_field(self, client):
+        assert "environment" in client.get("/health").json()
 
-    def test_readiness_returns_200(self, client):
-        response = client.get("/health/ready")
-        assert response.status_code == 200
+    def test_readiness_200(self, client):
+        assert client.get("/health/ready").status_code == 200
 
-    def test_readiness_returns_ready_or_degraded(self, client):
+    def test_readiness_status_value(self, client):
+        assert client.get("/health/ready").json()["status"] in ("ready", "degraded")
+
+    def test_readiness_checks_dict(self, client):
         data = client.get("/health/ready").json()
-        assert data["status"] in ("ready", "degraded")
-
-    def test_readiness_returns_checks(self, client):
-        data = client.get("/health/ready").json()
-        assert "checks" in data
-        assert isinstance(data["checks"], dict)
+        assert "checks" in data and isinstance(data["checks"], dict)
 
 
-# ── Auth Middleware ────────────────────────────────────────────────────────────
+# ── Auth enforcement ───────────────────────────────────────────────────────────
 
 class TestAuth:
-    def test_lessons_requires_auth_in_prod(self):
-        """In prod mode, /api/v1/lessons without a token must return 401."""
-        with patch.object(settings, "environment", "prod"):
-            with TestClient(app) as prod_client:
-                response = prod_client.get("/api/v1/lessons/")
-                assert response.status_code == 401
+    def test_no_token_returns_401(self, client_real_auth):
+        """No Authorization header → 401."""
+        assert client_real_auth.get("/api/v1/lessons/").status_code == 401
 
-    def test_lessons_accessible_in_dev_without_token(self, client):
-        """Dev mode bypasses real JWT validation — request should succeed."""
-        response = client.get("/api/v1/lessons/")
-        assert response.status_code == 200
+    def test_malformed_token_returns_401(self, client_real_auth):
+        """
+        A syntactically invalid JWT causes jose to raise JWTError, which
+        get_current_user catches and returns 401 — not 503.
+        503 only happens on httpx.HTTPError (JWKS fetch failure), so we
+        mock get_jwks to avoid any network call.
+        """
+        with patch.object(auth_module, "get_jwks",
+                          new=AsyncMock(return_value={"keys": []})):
+            resp = client_real_auth.get(
+                "/api/v1/lessons/",
+                headers={"Authorization": "Bearer not.a.valid.jwt"},
+            )
+        assert resp.status_code == 401
 
-    def test_missing_auth_header_returns_401_in_prod(self):
-        with patch.object(settings, "environment", "prod"):
-            with TestClient(app) as prod_client:
-                response = prod_client.get("/api/v1/users/some-user-id")
-                assert response.status_code == 401
-
-    def test_malformed_bearer_token_returns_401_in_prod(self):
-        with patch.object(settings, "environment", "prod"):
-            with TestClient(app) as prod_client:
-                response = prod_client.get(
-                    "/api/v1/lessons/",
-                    headers={"Authorization": "Bearer not.a.valid.jwt"},
-                )
-                assert response.status_code == 401
+    def test_missing_auth_header_detail(self, client_real_auth):
+        resp = client_real_auth.get("/api/v1/lessons/")
+        assert resp.status_code == 401
+        assert "authorization" in resp.json()["detail"].lower()
 
 
-# ── ISSUER / Entra Config ──────────────────────────────────────────────────────
+# ── Entra ISSUER regression ────────────────────────────────────────────────────
 
 class TestEntraConfig:
     def test_issuer_uses_tenant_id_not_tenant_name(self):
         """
-        Regression test for the duplicate-ISSUER bug.
-        ISSUER must use entra_tenant_id (GUID) in the subdomain,
-        NOT entra_tenant_name ('pixelmentor').
+        Regression: duplicate ISSUER bug used entra_tenant_name ('pixelmentor')
+        as the CIAM subdomain instead of entra_tenant_id (GUID).
         """
         from app.middleware.auth import ISSUER
-        tenant_id = settings.entra_tenant_id
-        tenant_name = settings.entra_tenant_name
-
-        # Must contain the tenant_id in the CIAM subdomain
-        assert ISSUER.startswith("https://"), "ISSUER must be a valid HTTPS URL"
-
-        # Must NOT use tenant_name as the subdomain (the old bug)
-        wrong_prefix = f"https://{tenant_name}.ciamlogin.com"
+        from app.config import settings
+        wrong_prefix = f"https://{settings.entra_tenant_name}.ciamlogin.com"
         assert not ISSUER.startswith(wrong_prefix), (
-            f"ISSUER is using tenant_name '{tenant_name}' as the CIAM subdomain. "
-            f"It must use tenant_id. Got: {ISSUER}"
+            f"ISSUER uses tenant_name as subdomain (duplicate-ISSUER bug). Got: {ISSUER}"
         )
+        assert ISSUER.startswith("https://")
 
-    def test_jwks_url_uses_tenant_id(self):
-        from app.middleware.auth import JWKS_URL
-        assert JWKS_URL.startswith("https://"), "JWKS_URL must be a valid HTTPS URL"
-
-    def test_issuer_and_jwks_share_same_ciam_subdomain(self):
+    def test_issuer_and_jwks_same_subdomain(self):
         from app.middleware.auth import ISSUER, JWKS_URL
-        issuer_base = ISSUER.split(".ciamlogin.com")[0]
-        jwks_base = JWKS_URL.split(".ciamlogin.com")[0]
-        assert issuer_base == jwks_base, (
-            f"ISSUER and JWKS_URL point to different CIAM tenants: "
-            f"{issuer_base!r} vs {jwks_base!r}"
-        )
+        assert ISSUER.split(".ciamlogin.com")[0] == JWKS_URL.split(".ciamlogin.com")[0]
 
 
-# ── Lessons Endpoints ─────────────────────────────────────────────────────────
+# ── Lessons ────────────────────────────────────────────────────────────────────
 
 class TestLessons:
-    def test_get_lessons_returns_list(self, client):
-        response = client.get("/api/v1/lessons/")
-        assert response.status_code == 200
-        assert isinstance(response.json(), list)
+    def test_list_returns_200_and_list(self, client):
+        resp = client.get("/api/v1/lessons/")
+        assert resp.status_code == 200
+        assert isinstance(resp.json(), list)
 
-    def test_get_lessons_have_required_fields(self, client):
+    def test_list_items_have_required_fields(self, client):
         lessons = client.get("/api/v1/lessons/").json()
         assert len(lessons) > 0
         for lesson in lessons:
-            assert "id" in lesson
-            assert "title" in lesson
-            assert "skill_level" in lesson
+            assert {"id", "title", "skill_level"} <= lesson.keys()
 
-    def test_get_lessons_filter_by_skill_level(self, client):
-        response = client.get("/api/v1/lessons/?skill_level=beginner")
-        assert response.status_code == 200
-        for lesson in response.json():
-            assert lesson["skill_level"] == "beginner"
+    def test_filter_by_skill_level(self, client):
+        resp = client.get("/api/v1/lessons/?skill_level=beginner")
+        assert resp.status_code == 200
+        assert all(l["skill_level"] == "beginner" for l in resp.json())
 
-    def test_get_lesson_by_id(self, client):
+    def test_get_by_id(self, client):
         lessons = client.get("/api/v1/lessons/").json()
-        lesson_id = lessons[0]["id"]
-        response = client.get(f"/api/v1/lessons/{lesson_id}")
-        assert response.status_code == 200
-        assert response.json()["id"] == lesson_id
+        lid = lessons[0]["id"]
+        resp = client.get(f"/api/v1/lessons/{lid}")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == lid
 
-    def test_get_lesson_not_found(self, client):
-        response = client.get("/api/v1/lessons/nonexistent-id-999")
-        assert response.status_code == 404
+    def test_not_found_returns_404(self, client):
+        assert client.get("/api/v1/lessons/does-not-exist-999").status_code == 404
 
 
-# ── Users Endpoints ───────────────────────────────────────────────────────────
+# ── Users ──────────────────────────────────────────────────────────────────────
 
 class TestUsers:
-    def test_get_own_profile(self, client):
-        """Dev user sub is 'dev-user-123' — can fetch their own profile."""
-        response = client.get("/api/v1/users/dev-user-123")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["user_id"] == "dev-user-123"
-        assert "skill_level" in data
-        assert "plan" in data
+    def test_own_profile_returns_200(self, client):
+        # MOCK_USER sub is "dev-user-123" — must match the user_id in the path
+        resp = client.get("/api/v1/users/dev-user-123")
+        assert resp.status_code == 200
+        assert resp.json()["user_id"] == "dev-user-123"
 
-    def test_get_other_user_profile_forbidden(self, client):
-        """Dev user should not be able to fetch another user's profile."""
-        response = client.get("/api/v1/users/some-other-user-id")
-        assert response.status_code == 403
-
-    def test_user_profile_has_expected_fields(self, client):
-        response = client.get("/api/v1/users/dev-user-123")
-        data = response.json()
-        for field in ["user_id", "display_name", "skill_level", "plan", "photos_analyzed"]:
+    def test_own_profile_has_expected_fields(self, client):
+        data = client.get("/api/v1/users/dev-user-123").json()
+        for field in ("user_id", "display_name", "skill_level", "plan", "photos_analyzed"):
             assert field in data
 
+    def test_other_user_returns_403(self, client):
+        """
+        Router checks current_user["sub"] != user_id — any other ID is forbidden.
+        NOTE: users.py previously had `and sub != "dev-user-123"` which made this
+        branch unreachable. That line is removed in the accompanying users.py fix.
+        """
+        resp = client.get("/api/v1/users/someone-else-456")
+        assert resp.status_code == 403
 
-# ── Headers ───────────────────────────────────────────────────────────────────
+
+# ── Headers ────────────────────────────────────────────────────────────────────
 
 class TestHeaders:
-    def test_correlation_id_in_response(self, client):
-        response = client.get("/health")
-        assert "x-correlation-id" in response.headers
+    def test_correlation_id_added(self, client):
+        assert "x-correlation-id" in client.get("/health").headers
 
-    def test_correlation_id_echoed_if_provided(self, client):
-        response = client.get("/health", headers={"X-Correlation-ID": "test-123"})
-        assert response.headers.get("x-correlation-id") == "test-123"
+    def test_correlation_id_echoed(self, client):
+        resp = client.get("/health", headers={"X-Correlation-ID": "trace-abc"})
+        assert resp.headers.get("x-correlation-id") == "trace-abc"
 
 
-# ── JWKS Cache ────────────────────────────────────────────────────────────────
+# ── JWKS cache ─────────────────────────────────────────────────────────────────
 
 class TestJWKSCache:
-    def test_jwks_cache_invalidated_on_jwt_error(self):
+    def test_cache_cleared_after_jwt_error(self):
         """
-        After a JWTError, the JWKS cache should be cleared so
-        rotated keys are fetched on the next request.
-        """
-        import app.middleware.auth as auth_module
+        When jwt.decode raises JWTError, _jwks_cache must be set to None
+        so the next request fetches fresh keys (handles key rotation).
 
-        # Pre-seed the cache
-        auth_module._jwks_cache = {"keys": [{"kid": "old-key"}]}
+        Must patch settings to non-dev: otherwise get_current_user returns
+        the mock user immediately and never reaches the except JWTError block.
+        """
+        auth_module._jwks_cache = {"keys": [{"kid": "stale"}]}
 
         mock_request = MagicMock()
-        mock_request.headers = {"Authorization": "Bearer bad.token.here"}
+        mock_request.headers = {"Authorization": "Bearer any.token.here"}
 
-        with patch("app.middleware.auth.jwt.decode", side_effect=Exception("Invalid")):
-            with patch("app.middleware.auth.get_jwks", new=AsyncMock(return_value={"keys": []})):
-                import asyncio
-                try:
-                    asyncio.get_event_loop().run_until_complete(
-                        auth_module.get_current_user(mock_request)
-                    )
-                except Exception:
-                    pass
+        with patch.object(auth_module, "settings", _make_settings("prod")):
+            with patch.object(auth_module, "get_jwks",
+                              new=AsyncMock(return_value={"keys": []})):
+                with patch.object(auth_module.jwt, "decode",
+                                  side_effect=JWTError("bad token")):
+                    try:
+                        asyncio.get_event_loop().run_until_complete(
+                            auth_module.get_current_user(mock_request)
+                        )
+                    except Exception:
+                        pass
 
-        # Cache should be cleared (None) after auth failure
-        assert auth_module._jwks_cache is None
+        assert auth_module._jwks_cache is None, (
+            "_jwks_cache must be None after JWTError so rotated keys are refetched"
+        )
