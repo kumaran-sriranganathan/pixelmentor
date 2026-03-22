@@ -1,30 +1,19 @@
 ###############################################################################
 # tests/test_health.py — PixelMentor backend tests
-#
-# Auth strategy
-# -------------
-# get_current_user() has a hard bypass: if settings.environment == "dev" it
-# returns a mock user without touching JWT logic at all.  CI runs with
-# ENVIRONMENT=dev, so ALL tests use FastAPI dependency_overrides to inject a
-# known user — this works regardless of the environment value and avoids any
-# real network calls to Entra.
-#
-# Tests that need to exercise real auth logic (401, JWKS cache) patch
-# app.middleware.auth.settings directly on the module-level name so that
-# get_current_user() sees a non-dev environment.
 ###############################################################################
 
 import asyncio
+import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
-from jose import JWTError
+from jose import JWTError, ExpiredSignatureError
 
 from app.main import app
 from app.middleware.auth import get_current_user
 import app.middleware.auth as auth_module
 
-# ── Shared mock identity ───────────────────────────────────────────────────────
+# ── Mock identity ──────────────────────────────────────────────────────────────
 
 MOCK_USER = {
     "sub": "dev-user-123",
@@ -39,10 +28,7 @@ async def _mock_get_current_user():
     return MOCK_USER
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
 def _make_settings(environment: str):
-    """Return a settings-like object with environment overridden."""
     from app.config import get_settings
     original = get_settings()
 
@@ -59,10 +45,7 @@ def _make_settings(environment: str):
 
 @pytest.fixture
 def client():
-    """
-    Standard test client — auth dependency overridden with MOCK_USER.
-    Use this for all endpoint logic tests.
-    """
+    """Auth dependency overridden — use for all endpoint logic tests."""
     app.dependency_overrides[get_current_user] = _mock_get_current_user
     with TestClient(app) as c:
         yield c
@@ -71,14 +54,21 @@ def client():
 
 @pytest.fixture
 def client_real_auth():
-    """
-    Test client with no dependency override and environment forced to prod
-    so real JWT validation runs inside get_current_user.
-    """
+    """No dependency override, environment forced to prod — real JWT runs."""
     app.dependency_overrides.clear()
     with patch.object(auth_module, "settings", _make_settings("prod")):
         with TestClient(app) as c:
             yield c
+
+
+@pytest.fixture(autouse=True)
+def reset_jwks_cache():
+    """Reset JWKS cache state before every test."""
+    auth_module._jwks_cache = None
+    auth_module._jwks_cached_at = 0.0
+    yield
+    auth_module._jwks_cache = None
+    auth_module._jwks_cached_at = 0.0
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────
@@ -104,20 +94,47 @@ class TestHealth:
         assert "checks" in data and isinstance(data["checks"], dict)
 
 
-# ── Auth enforcement ───────────────────────────────────────────────────────────
+# ── Auth enforcement & error codes ────────────────────────────────────────────
 
 class TestAuth:
-    def test_no_token_returns_401(self, client_real_auth):
-        """No Authorization header → 401."""
-        assert client_real_auth.get("/api/v1/lessons/").status_code == 401
+    def test_missing_header_returns_401(self, client_real_auth):
+        resp = client_real_auth.get("/api/v1/lessons/")
+        assert resp.status_code == 401
+        assert resp.json()["detail"]["error"] == "token_missing"
 
-    def test_malformed_token_returns_401(self, client_real_auth):
+    def test_expired_token_returns_token_expired(self, client_real_auth):
         """
-        A syntactically invalid JWT causes jose to raise JWTError, which
-        get_current_user catches and returns 401 — not 503.
-        503 only happens on httpx.HTTPError (JWKS fetch failure), so we
-        mock get_jwks to avoid any network call.
+        Expired token must return error=token_expired so Android knows
+        to call acquireTokenSilently() rather than force re-login.
         """
+        with patch.object(auth_module, "get_jwks",
+                          new=AsyncMock(return_value={"keys": []})):
+            with patch.object(auth_module.jwt, "decode",
+                              side_effect=ExpiredSignatureError("expired")):
+                resp = client_real_auth.get(
+                    "/api/v1/lessons/",
+                    headers={"Authorization": "Bearer any.token.here"},
+                )
+        assert resp.status_code == 401
+        assert resp.json()["detail"]["error"] == "token_expired"
+
+    def test_invalid_token_returns_token_invalid(self, client_real_auth):
+        """
+        Bad signature / wrong audience must return error=token_invalid so
+        Android knows to force interactive re-login, not waste a refresh attempt.
+        """
+        with patch.object(auth_module, "get_jwks",
+                          new=AsyncMock(return_value={"keys": []})):
+            with patch.object(auth_module.jwt, "decode",
+                              side_effect=JWTError("bad signature")):
+                resp = client_real_auth.get(
+                    "/api/v1/lessons/",
+                    headers={"Authorization": "Bearer not.a.valid.jwt"},
+                )
+        assert resp.status_code == 401
+        assert resp.json()["detail"]["error"] == "token_invalid"
+
+    def test_malformed_bearer_returns_401(self, client_real_auth):
         with patch.object(auth_module, "get_jwks",
                           new=AsyncMock(return_value={"keys": []})):
             resp = client_real_auth.get(
@@ -126,20 +143,15 @@ class TestAuth:
             )
         assert resp.status_code == 401
 
-    def test_missing_auth_header_detail(self, client_real_auth):
-        resp = client_real_auth.get("/api/v1/lessons/")
-        assert resp.status_code == 401
-        assert "authorization" in resp.json()["detail"].lower()
+    def test_valid_auth_override_returns_200(self, client):
+        assert client.get("/api/v1/lessons/").status_code == 200
 
 
 # ── Entra ISSUER regression ────────────────────────────────────────────────────
 
 class TestEntraConfig:
     def test_issuer_uses_tenant_id_not_tenant_name(self):
-        """
-        Regression: duplicate ISSUER bug used entra_tenant_name ('pixelmentor')
-        as the CIAM subdomain instead of entra_tenant_id (GUID).
-        """
+        """Regression: duplicate ISSUER bug used tenant_name as CIAM subdomain."""
         from app.middleware.auth import ISSUER
         from app.config import settings
         wrong_prefix = f"https://{settings.entra_tenant_name}.ciamlogin.com"
@@ -151,6 +163,103 @@ class TestEntraConfig:
     def test_issuer_and_jwks_same_subdomain(self):
         from app.middleware.auth import ISSUER, JWKS_URL
         assert ISSUER.split(".ciamlogin.com")[0] == JWKS_URL.split(".ciamlogin.com")[0]
+
+
+# ── JWKS cache ─────────────────────────────────────────────────────────────────
+
+class TestJWKSCache:
+    def test_cache_populated_on_first_fetch(self):
+        assert auth_module._jwks_cache is None
+        mock_keys = {"keys": [{"kid": "key1"}]}
+
+        async def _run():
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_resp = MagicMock()
+                mock_resp.json.return_value = mock_keys
+                mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
+                    return_value=mock_resp
+                )
+                return await auth_module.get_jwks()
+
+        result = asyncio.get_event_loop().run_until_complete(_run())
+        assert result == mock_keys
+        assert auth_module._jwks_cache == mock_keys
+
+    def test_cache_reused_within_ttl(self):
+        auth_module._jwks_cache = {"keys": [{"kid": "cached"}]}
+        auth_module._jwks_cached_at = time.monotonic()
+
+        async def _run():
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                result = await auth_module.get_jwks()
+                mock_client_cls.assert_not_called()
+                return result
+
+        result = asyncio.get_event_loop().run_until_complete(_run())
+        assert result == {"keys": [{"kid": "cached"}]}
+
+    def test_cache_refreshed_after_ttl(self):
+        auth_module._jwks_cache = {"keys": [{"kid": "stale"}]}
+        # Set cached_at to well past the TTL
+        auth_module._jwks_cached_at = time.monotonic() - auth_module.JWKS_CACHE_TTL_SECONDS - 1
+
+        fresh_keys = {"keys": [{"kid": "fresh"}]}
+
+        async def _run():
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_resp = MagicMock()
+                mock_resp.json.return_value = fresh_keys
+                mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
+                    return_value=mock_resp
+                )
+                return await auth_module.get_jwks()
+
+        result = asyncio.get_event_loop().run_until_complete(_run())
+        assert result == fresh_keys
+
+    def test_cache_cleared_on_expired_token(self):
+        """ExpiredSignatureError must clear the cache."""
+        auth_module._jwks_cache = {"keys": [{"kid": "stale"}]}
+        auth_module._jwks_cached_at = time.monotonic()
+
+        mock_request = MagicMock()
+        mock_request.headers = {"Authorization": "Bearer any.token.here"}
+
+        with patch.object(auth_module, "settings", _make_settings("prod")):
+            with patch.object(auth_module, "get_jwks",
+                              new=AsyncMock(return_value={"keys": []})):
+                with patch.object(auth_module.jwt, "decode",
+                                  side_effect=ExpiredSignatureError("expired")):
+                    try:
+                        asyncio.get_event_loop().run_until_complete(
+                            auth_module.get_current_user(mock_request)
+                        )
+                    except Exception:
+                        pass
+
+        assert auth_module._jwks_cache is None
+
+    def test_cache_cleared_on_jwt_error(self):
+        """JWTError must also clear the cache (handles emergency key rotation)."""
+        auth_module._jwks_cache = {"keys": [{"kid": "stale"}]}
+        auth_module._jwks_cached_at = time.monotonic()
+
+        mock_request = MagicMock()
+        mock_request.headers = {"Authorization": "Bearer any.token.here"}
+
+        with patch.object(auth_module, "settings", _make_settings("prod")):
+            with patch.object(auth_module, "get_jwks",
+                              new=AsyncMock(return_value={"keys": []})):
+                with patch.object(auth_module.jwt, "decode",
+                                  side_effect=JWTError("bad sig")):
+                    try:
+                        asyncio.get_event_loop().run_until_complete(
+                            auth_module.get_current_user(mock_request)
+                        )
+                    except Exception:
+                        pass
+
+        assert auth_module._jwks_cache is None
 
 
 # ── Lessons ────────────────────────────────────────────────────────────────────
@@ -187,7 +296,6 @@ class TestLessons:
 
 class TestUsers:
     def test_own_profile_returns_200(self, client):
-        # MOCK_USER sub is "dev-user-123" — must match the user_id in the path
         resp = client.get("/api/v1/users/dev-user-123")
         assert resp.status_code == 200
         assert resp.json()["user_id"] == "dev-user-123"
@@ -198,11 +306,6 @@ class TestUsers:
             assert field in data
 
     def test_other_user_returns_403(self, client):
-        """
-        Router checks current_user["sub"] != user_id — any other ID is forbidden.
-        NOTE: users.py previously had `and sub != "dev-user-123"` which made this
-        branch unreachable. That line is removed in the accompanying users.py fix.
-        """
         resp = client.get("/api/v1/users/someone-else-456")
         assert resp.status_code == 403
 
@@ -216,36 +319,3 @@ class TestHeaders:
     def test_correlation_id_echoed(self, client):
         resp = client.get("/health", headers={"X-Correlation-ID": "trace-abc"})
         assert resp.headers.get("x-correlation-id") == "trace-abc"
-
-
-# ── JWKS cache ─────────────────────────────────────────────────────────────────
-
-class TestJWKSCache:
-    def test_cache_cleared_after_jwt_error(self):
-        """
-        When jwt.decode raises JWTError, _jwks_cache must be set to None
-        so the next request fetches fresh keys (handles key rotation).
-
-        Must patch settings to non-dev: otherwise get_current_user returns
-        the mock user immediately and never reaches the except JWTError block.
-        """
-        auth_module._jwks_cache = {"keys": [{"kid": "stale"}]}
-
-        mock_request = MagicMock()
-        mock_request.headers = {"Authorization": "Bearer any.token.here"}
-
-        with patch.object(auth_module, "settings", _make_settings("prod")):
-            with patch.object(auth_module, "get_jwks",
-                              new=AsyncMock(return_value={"keys": []})):
-                with patch.object(auth_module.jwt, "decode",
-                                  side_effect=JWTError("bad token")):
-                    try:
-                        asyncio.get_event_loop().run_until_complete(
-                            auth_module.get_current_user(mock_request)
-                        )
-                    except Exception:
-                        pass
-
-        assert auth_module._jwks_cache is None, (
-            "_jwks_cache must be None after JWTError so rotated keys are refetched"
-        )
