@@ -139,7 +139,7 @@ jobs:
       - name: Run Tests
         working-directory: backend
         env:
-          ENVIRONMENT: test
+          ENVIRONMENT: dev
           # Point to local/mock services in test mode
           AZURE_OPENAI_ENDPOINT: "https://mock.openai.azure.com"
           COSMOS_DB_ENDPOINT: "https://mock.cosmos.azure.com"
