@@ -26,6 +26,12 @@ ISSUER = (
     f"/{settings.entra_tenant_id}/v2.0"
 )
 
+# Expected token issuer
+ISSUER = (
+    f"https://{settings.entra_tenant_name}.ciamlogin.com"
+    f"/{settings.entra_tenant_id}/v2.0"
+)
+
 _jwks_cache = None
 
 
