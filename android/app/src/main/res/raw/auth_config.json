@@ -1,0 +1,15 @@
+{
+  "client_id": "51c1a8ba-2b07-4d99-bd91-4652081f7b41",
+  "authorization_user_agent": "WEBVIEW",
+  "redirect_uri": "msauth://com.pixelmentor.app/callback",
+  "authorities": [
+    {
+      "type": "CIAM",
+      "authority_url": "https://pixelmentor.ciamlogin.com/260b8d50-600d-47d4-b73c-e094c1674813/"
+    }
+  ],
+  "logging": {
+    "pii_enabled": false,
+    "log_level": "WARNING"
+  }
+}
