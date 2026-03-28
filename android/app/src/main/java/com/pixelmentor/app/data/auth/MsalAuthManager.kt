@@ -4,8 +4,8 @@ import android.app.Activity
 import android.content.Context
 import com.microsoft.identity.client.*
 import com.microsoft.identity.client.exception.MsalException
+import com.microsoft.identity.client.exception.MsalClientException
 import com.microsoft.identity.client.exception.MsalUiRequiredException
-import com.pixelmentor.app.BuildConfig
 import com.pixelmentor.app.R
 import com.pixelmentor.app.domain.model.AuthUser
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -15,31 +15,22 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/**
- * Wraps MSAL's callback-based API with coroutines.
- *
- * Scopes: we request the PixelMentor API scope so the access token
- * is valid for our backend (audience = entra_api_client_id).
- */
 @Singleton
 class MsalAuthManager @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     companion object {
-        // API scope — matches the scope exposed by the PixelMentor API app registration
         private const val API_SCOPE =
-            "https://pixelmentor.onmicrosoft.com/pixelmentor-api/access_as_user"
-
+            "api://2b0185be-147c-4751-be94-4b6905f4efa3/access_as_user"
         private val SCOPES = arrayOf(API_SCOPE)
+
+        // Entra External ID (CIAM) authority
+        private const val AUTHORITY = "https://pixelmentor.ciamlogin.com/pixelmentor.onmicrosoft.com/"
     }
 
     @Volatile
     private var msalApp: ISingleAccountPublicClientApplication? = null
 
-    /**
-     * Initialise MSAL. Called once from the Hilt module at app start.
-     * Suspends until the client is ready.
-     */
     suspend fun initialize(): Unit = suspendCancellableCoroutine { cont ->
         PublicClientApplication.createSingleAccountPublicClientApplication(
             context,
@@ -49,7 +40,6 @@ class MsalAuthManager @Inject constructor(
                     msalApp = application
                     cont.resume(Unit)
                 }
-
                 override fun onError(exception: MsalException) {
                     cont.resumeWithException(exception)
                 }
@@ -57,10 +47,6 @@ class MsalAuthManager @Inject constructor(
         )
     }
 
-    /**
-     * Interactive sign-in — opens the Entra External ID browser flow.
-     * User chooses Google or Email/Password on the Entra-hosted page.
-     */
     suspend fun signIn(activity: Activity): AuthUser =
         suspendCancellableCoroutine { cont ->
             requireApp().signIn(
@@ -71,55 +57,44 @@ class MsalAuthManager @Inject constructor(
                     override fun onSuccess(result: IAuthenticationResult) {
                         cont.resume(result.toAuthUser())
                     }
-
                     override fun onError(exception: MsalException) {
                         cont.resumeWithException(exception)
                     }
-
                     override fun onCancel() {
-                        cont.resumeWithException(
-                            MsalException("User cancelled sign-in")
-                        )
+                        cont.resumeWithException(MsalClientException("user_cancelled", "User cancelled sign-in"))
                     }
                 }
             )
         }
 
     /**
-     * Silent token acquisition — no UI shown.
-     * Call this when the backend returns error=token_expired.
-     * Throws MsalUiRequiredException if the refresh token is also expired
-     * (caller should then call signIn() for interactive re-login).
+     * Silent token acquisition using the account identifier string.
+     * MSAL 5.x acquireTokenSilentAsync takes (scopes, accountIdentifier, authority).
      */
     suspend fun acquireTokenSilently(): AuthUser =
         suspendCancellableCoroutine { cont ->
-            val account = requireApp().currentAccount?.currentAccount
+            val accountId = requireApp().currentAccount?.currentAccount?.id
                 ?: return@suspendCancellableCoroutine cont.resumeWithException(
-                    MsalUiRequiredException(
-                        MsalUiRequiredException.NO_CURRENT_ACCOUNT,
-                        "No current account for silent refresh"
-                    )
+                    MsalUiRequiredException("NO_CURRENT_ACCOUNT", "No current account")
                 )
 
-            requireApp().acquireTokenSilentAsync(
-                SCOPES,
-                account,
-                object : SilentAuthenticationCallback {
+            val params = AcquireTokenSilentParameters.Builder()
+                .forAccount(requireApp().currentAccount?.currentAccount)
+                .fromAuthority(AUTHORITY)
+                .withScopes(SCOPES.toList())
+                .withCallback(object : SilentAuthenticationCallback {
                     override fun onSuccess(result: IAuthenticationResult) {
                         cont.resume(result.toAuthUser())
                     }
-
                     override fun onError(exception: MsalException) {
                         cont.resumeWithException(exception)
                     }
-                }
-            )
+                })
+                .build()
+
+            requireApp().acquireTokenSilentAsync(params)
         }
 
-    /**
-     * Returns the current account's cached access token, or null if
-     * no user is signed in.
-     */
     suspend fun getCurrentAccount(): AuthUser? =
         suspendCancellableCoroutine { cont ->
             requireApp().getCurrentAccountAsync(
@@ -129,27 +104,24 @@ class MsalAuthManager @Inject constructor(
                             cont.resume(null)
                             return
                         }
-                        // Attempt a silent token fetch to get a fresh access token
-                        requireApp().acquireTokenSilentAsync(
-                            SCOPES,
-                            activeAccount,
-                            object : SilentAuthenticationCallback {
+                        val params = AcquireTokenSilentParameters.Builder()
+                            .forAccount(activeAccount)
+                            .fromAuthority(AUTHORITY)
+                            .withScopes(SCOPES.toList())
+                            .withCallback(object : SilentAuthenticationCallback {
                                 override fun onSuccess(result: IAuthenticationResult) {
                                     cont.resume(result.toAuthUser())
                                 }
-
                                 override fun onError(exception: MsalException) {
-                                    // Couldn't get a token silently — treat as unauthenticated
                                     cont.resume(null)
                                 }
-                            }
-                        )
+                            })
+                            .build()
+                        requireApp().acquireTokenSilentAsync(params)
                     }
-
                     override fun onAccountChanged(priorAccount: IAccount?, currentAccount: IAccount?) {
                         cont.resume(null)
                     }
-
                     override fun onError(exception: MsalException) {
                         cont.resume(null)
                     }
@@ -159,13 +131,8 @@ class MsalAuthManager @Inject constructor(
 
     suspend fun signOut(): Unit = suspendCancellableCoroutine { cont ->
         requireApp().signOut(object : ISingleAccountPublicClientApplication.SignOutCallback {
-            override fun onSignOut() {
-                cont.resume(Unit)
-            }
-
-            override fun onError(exception: MsalException) {
-                cont.resumeWithException(exception)
-            }
+            override fun onSignOut() { cont.resume(Unit) }
+            override fun onError(exception: MsalException) { cont.resumeWithException(exception) }
         })
     }
 

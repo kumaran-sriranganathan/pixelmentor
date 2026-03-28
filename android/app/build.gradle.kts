@@ -17,7 +17,6 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        // Entra External ID config — injected at build time
         buildConfigField("String", "ENTRA_CLIENT_ID", "\"51c1a8ba-2b07-4d99-bd91-4652081f7b41\"")
         buildConfigField("String", "ENTRA_TENANT_ID", "\"260b8d50-600d-47d4-b73c-e094c1674813\"")
         buildConfigField("String", "API_BASE_URL_DEV", "\"https://pm-dev-api.happymushroom-b6080bcd.australiaeast.azurecontainerapps.io/\"")
@@ -56,6 +55,19 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // Force resolution of the display-mask dependency that MSAL 5.x pulls in.
+    // The artifact exists in the Azure DevOps feed but under a different version.
+    configurations.all {
+        resolutionStrategy {
+            force("com.microsoft.device.display:display-mask:0.3.0")
+            // If 0.3.0 still can't resolve, substitute with a no-op empty module
+            dependencySubstitution {
+                substitute(module("com.microsoft.device.display:display-mask"))
+                    .using(module("com.microsoft.device.display:display-mask:0.3.0"))
+            }
+        }
+    }
 }
 
 dependencies {
@@ -87,8 +99,12 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
 
-    // MSAL
-    implementation(libs.msal)
+    // MSAL — exclude the display-mask dependency that can't be resolved
+    // from public repos. It's only needed for Surface Duo foldable support,
+    // which PixelMentor doesn't use.
+    implementation(libs.msal) {
+        exclude(group = "com.microsoft.device.display", module = "display-mask")
+    }
 
     // DataStore
     implementation(libs.datastore.preferences)

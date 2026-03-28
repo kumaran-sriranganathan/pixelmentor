@@ -5,11 +5,14 @@
   "authorities": [
     {
       "type": "CIAM",
-      "authority_url": "https://pixelmentor.ciamlogin.com/260b8d50-600d-47d4-b73c-e094c1674813/"
+      "authority_url": "https://pixelmentor.ciamlogin.com/pixelmentor.onmicrosoft.com/"
     }
   ],
+  "account_mode": "SINGLE",
+  "broker_redirect_uri_registered": false,
+  "challenge_types": ["oob", "password", "redirect"],
   "logging": {
     "pii_enabled": false,
-    "log_level": "WARNING"
+    "log_level": "VERBOSE"
   }
 }

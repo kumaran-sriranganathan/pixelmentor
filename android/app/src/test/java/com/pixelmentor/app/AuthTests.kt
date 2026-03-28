@@ -219,7 +219,7 @@ class AuthRepositoryTest {
     fun `refreshToken returns null and sets Unauthenticated on MsalUiRequiredException`() = runTest {
         coEvery { msalAuthManager.acquireTokenSilently() } throws
             com.microsoft.identity.client.exception.MsalUiRequiredException(
-                com.microsoft.identity.client.exception.MsalUiRequiredException.NO_CURRENT_ACCOUNT,
+                com.microsoft.identity.client.exception."NO_CURRENT_ACCOUNT",
                 "Refresh token expired"
             )
 
