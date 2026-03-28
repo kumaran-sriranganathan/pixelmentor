@@ -55,10 +55,21 @@ def client():
 @pytest.fixture
 def client_real_auth():
     """No dependency override, environment forced to prod — real JWT runs."""
+    from app.routers.lessons import get_search_client
     app.dependency_overrides.clear()
+
+    mock = MagicMock()
+    mock_results = MagicMock()
+    mock_results.__iter__ = MagicMock(return_value=iter([]))
+    mock_results.get_count = MagicMock(return_value=0)
+    mock.search.return_value = mock_results
+    app.dependency_overrides[get_search_client] = lambda: mock
+
     with patch.object(auth_module, "settings", _make_settings("prod")):
         with TestClient(app) as c:
             yield c
+
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture(autouse=True)
