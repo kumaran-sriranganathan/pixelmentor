@@ -1,11 +1,9 @@
 """
 backend/app/config.py
-----------------------
-Pydantic-Settings configuration for PixelMentor backend.
-All values are injected as environment variables by Terraform / Container App secrets.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     # ── Auth ──────────────────────────────────────────────────────────────
@@ -33,3 +31,6 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+
+settings = Settings()  # type: ignore[call-arg]  # values come from env
