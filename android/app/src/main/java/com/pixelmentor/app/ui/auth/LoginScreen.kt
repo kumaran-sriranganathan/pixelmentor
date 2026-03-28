@@ -20,6 +20,7 @@ fun LoginScreen(
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val authState by viewModel.authState.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // Navigate to home as soon as auth succeeds
@@ -41,8 +42,6 @@ fun LoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
-
-                // Logo / wordmark
                 Text(
                     text = "PixelMentor",
                     style = MaterialTheme.typography.displayMedium,
@@ -59,23 +58,39 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Show error if sign-in failed
+                if (uiState is LoginUiState.Error) {
+                    Text(
+                        text = (uiState as LoginUiState.Error).message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
                 when (authState) {
-                    is AuthState.Loading -> {
-                        CircularProgressIndicator()
-                    }
+                    is AuthState.Loading -> CircularProgressIndicator()
 
                     is AuthState.Unauthenticated -> {
-                        // Single sign-in button — Entra shows Google + Email/Password
                         Button(
                             onClick = { viewModel.signIn(context as Activity) },
+                            enabled = uiState !is LoginUiState.SigningIn,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp),
                         ) {
-                            Text(
-                                text = "Sign in",
-                                style = MaterialTheme.typography.labelLarge,
-                            )
+                            if (uiState is LoginUiState.SigningIn) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Text(
+                                    text = "Sign in",
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
                         }
 
                         Text(
@@ -85,10 +100,7 @@ fun LoginScreen(
                         )
                     }
 
-                    is AuthState.Authenticated -> {
-                        // Briefly shown before LaunchedEffect navigates away
-                        CircularProgressIndicator()
-                    }
+                    is AuthState.Authenticated -> CircularProgressIndicator()
                 }
             }
         }
