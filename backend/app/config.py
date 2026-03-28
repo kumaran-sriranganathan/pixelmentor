@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     # ── General ───────────────────────────────────────────────────────────
     environment: str = "dev"
     log_level: str = "INFO"
+    rate_limit_per_minute: int = 60
+    rate_limit_ai_per_minute: int = 20
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
