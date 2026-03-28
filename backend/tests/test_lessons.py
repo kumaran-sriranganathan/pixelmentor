@@ -1,7 +1,7 @@
 """
 tests/test_lessons.py
 ----------------------
-Unit tests for the /lessons router using mocked Azure AI Search.
+Unit tests for the /api/v1/lessons router using mocked Azure AI Search.
 Run with:  pytest tests/test_lessons.py -v
 """
 
@@ -91,7 +91,7 @@ def client():
 
 
 # ---------------------------------------------------------------------------
-# GET /lessons — list
+# GET /api/v1/lessons — list
 # ---------------------------------------------------------------------------
 
 class TestListLessons:
@@ -99,7 +99,7 @@ class TestListLessons:
         mock = _mock_search_client(SAMPLE_LESSONS)
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        resp = client.get("/lessons")
+        resp = client.get("/api/v1/lessons")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -112,7 +112,7 @@ class TestListLessons:
         mock = _mock_search_client([SAMPLE_LESSONS[0]])
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        resp = client.get("/lessons?q=camera")
+        resp = client.get("/api/v1/lessons?q=camera")
 
         assert resp.status_code == 200
         _, kwargs = mock.search.call_args
@@ -122,7 +122,7 @@ class TestListLessons:
         mock = _mock_search_client(SAMPLE_LESSONS)
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        client.get("/lessons")
+        client.get("/api/v1/lessons")
 
         _, kwargs = mock.search.call_args
         assert kwargs["search_text"] == "*"
@@ -131,7 +131,7 @@ class TestListLessons:
         mock = _mock_search_client([SAMPLE_LESSONS[2]])
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        resp = client.get("/lessons?category=lighting")
+        resp = client.get("/api/v1/lessons?category=lighting")
 
         assert resp.status_code == 200
         _, kwargs = mock.search.call_args
@@ -141,7 +141,7 @@ class TestListLessons:
         mock = _mock_search_client([SAMPLE_LESSONS[2]])
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        client.get("/lessons?difficulty=advanced")
+        client.get("/api/v1/lessons?difficulty=advanced")
 
         _, kwargs = mock.search.call_args
         assert "difficulty eq 'advanced'" in kwargs["filter"]
@@ -150,7 +150,7 @@ class TestListLessons:
         mock = _mock_search_client([])
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        client.get("/lessons?category=lighting&difficulty=advanced")
+        client.get("/api/v1/lessons?category=lighting&difficulty=advanced")
 
         _, kwargs = mock.search.call_args
         f = kwargs["filter"]
@@ -161,7 +161,7 @@ class TestListLessons:
         mock = _mock_search_client(SAMPLE_LESSONS[1:2], total=3)
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        resp = client.get("/lessons?page=2&page_size=1")
+        resp = client.get("/api/v1/lessons?page=2&page_size=1")
 
         assert resp.status_code == 200
         _, kwargs = mock.search.call_args
@@ -175,7 +175,7 @@ class TestListLessons:
         broken.search.side_effect = HttpResponseError(message="Simulated failure")
         app.dependency_overrides[get_search_client] = lambda: broken
 
-        resp = client.get("/lessons")
+        resp = client.get("/api/v1/lessons")
 
         assert resp.status_code == 502
 
@@ -183,14 +183,14 @@ class TestListLessons:
         mock = _mock_search_client(SAMPLE_LESSONS)
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        resp = client.get("/lessons")
+        resp = client.get("/api/v1/lessons")
 
         for lesson in resp.json()["lessons"]:
             assert "content" not in lesson
 
 
 # ---------------------------------------------------------------------------
-# GET /lessons/{lesson_id} — detail
+# GET /api/v1/lessons/{lesson_id} — detail
 # ---------------------------------------------------------------------------
 
 class TestGetLesson:
@@ -199,7 +199,7 @@ class TestGetLesson:
         mock.get_document.return_value = SAMPLE_LESSONS[0]
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        resp = client.get("/lessons/lesson-001")
+        resp = client.get("/api/v1/lessons/lesson-001")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -215,7 +215,7 @@ class TestGetLesson:
         mock.get_document.side_effect = err
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        resp = client.get("/lessons/does-not-exist")
+        resp = client.get("/api/v1/lessons/does-not-exist")
 
         assert resp.status_code == 404
 
@@ -228,6 +228,6 @@ class TestGetLesson:
         mock.get_document.side_effect = err
         app.dependency_overrides[get_search_client] = lambda: mock
 
-        resp = client.get("/lessons/lesson-001")
+        resp = client.get("/api/v1/lessons/lesson-001")
 
         assert resp.status_code == 502
