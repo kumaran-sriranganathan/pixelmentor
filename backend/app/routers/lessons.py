@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.config import settings
+from app.middleware.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,7 @@ async def list_lessons(
     difficulty: Optional[str] = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
     search_client: SearchClient = Depends(get_search_client),
 ) -> LessonsResponse:
     skip = (page - 1) * page_size
@@ -146,6 +148,7 @@ async def list_lessons(
 @router.get("/{lesson_id}", response_model=LessonDetail)
 async def get_lesson(
     lesson_id: str,
+    current_user: dict = Depends(get_current_user),
     search_client: SearchClient = Depends(get_search_client),
 ) -> LessonDetail:
     try:
