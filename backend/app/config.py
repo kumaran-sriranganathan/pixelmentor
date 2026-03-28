@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     # ── Auth ──────────────────────────────────────────────────────────────
     entra_tenant_id: str
     entra_api_client_id: str
+    entra_tenant_name: str = "pixelmentor"
 
     # ── Azure AI Search ───────────────────────────────────────────────────
     azure_search_endpoint: str
@@ -34,3 +35,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore[call-arg]  # values come from env
+
+
+def get_settings() -> Settings:
+    return settings
