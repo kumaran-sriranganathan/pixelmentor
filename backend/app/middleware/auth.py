@@ -12,7 +12,7 @@ import httpx
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 # Microsoft Entra External ID JWKS endpoint
 JWKS_URL = (
