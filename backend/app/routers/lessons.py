@@ -2,11 +2,6 @@
 backend/app/routers/lessons.py
 -------------------------------
 Replaces the hardcoded lessons list with real Azure AI Search queries.
-
-Endpoints
----------
-GET  /lessons              – paginated list, optional ?category=&difficulty=&q=
-GET  /lessons/{lesson_id}  – single lesson by ID
 """
 
 from __future__ import annotations
@@ -21,11 +16,11 @@ from azure.search.documents.models import QueryType
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.config import settings  # existing config module
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/lessons", tags=["lessons"])
+router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +55,6 @@ class LessonsResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 def get_search_client() -> SearchClient:
-    """FastAPI dependency — yields a configured SearchClient."""
     return SearchClient(
         endpoint=settings.azure_search_endpoint,
         index_name=settings.search_index_name,
@@ -113,20 +107,13 @@ def _doc_to_detail(doc: dict) -> LessonDetail:
 
 @router.get("", response_model=LessonsResponse)
 async def list_lessons(
-    q: Optional[str] = Query(default=None, description="Full-text search query"),
-    category: Optional[str] = Query(default=None, description="Filter by category"),
-    difficulty: Optional[str] = Query(default=None, description="Filter by difficulty"),
+    q: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
+    difficulty: Optional[str] = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     search_client: SearchClient = Depends(get_search_client),
 ) -> LessonsResponse:
-    """
-    Return a paginated list of lessons.
-
-    - Use `q` for full-text search across title, description, and content.
-    - Use `category` / `difficulty` to filter.
-    - Results are ordered by the `order` field when no search query is given.
-    """
     skip = (page - 1) * page_size
     filter_expr = _build_filter(category, difficulty)
 
@@ -141,7 +128,6 @@ async def list_lessons(
             top=page_size,
             include_total_count=True,
         )
-
         lessons = [_doc_to_summary(doc) for doc in results]
         total = results.get_count() or 0
 
@@ -162,9 +148,11 @@ async def get_lesson(
     lesson_id: str,
     search_client: SearchClient = Depends(get_search_client),
 ) -> LessonDetail:
-    """Return the full detail of a single lesson including its content."""
     try:
-        doc = search_client.get_document(key=lesson_id, selected_fields=SELECT_DETAIL_FIELDS.split(","))
+        doc = search_client.get_document(
+            key=lesson_id,
+            selected_fields=SELECT_DETAIL_FIELDS.split(","),
+        )
     except HttpResponseError as exc:
         if exc.status_code == 404:
             raise HTTPException(status_code=404, detail="Lesson not found")
