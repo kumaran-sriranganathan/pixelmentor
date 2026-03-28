@@ -140,9 +140,12 @@ jobs:
         working-directory: backend
         env:
           ENVIRONMENT: dev
-          # Point to local/mock services in test mode
           AZURE_OPENAI_ENDPOINT: "https://mock.openai.azure.com"
           COSMOS_DB_ENDPOINT: "https://mock.cosmos.azure.com"
+          ENTRA_TENANT_ID: "mock-tenant-id"
+          ENTRA_API_CLIENT_ID: "mock-client-id"
+          AZURE_SEARCH_ENDPOINT: "https://mock.search.windows.net"
+          AZURE_SEARCH_KEY: "mock-search-key"
         run: |
           pytest tests/ \
             --tb=short \
