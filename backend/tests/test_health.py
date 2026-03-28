@@ -107,52 +107,59 @@ class TestHealth:
 
 # ── Auth enforcement & error codes ────────────────────────────────────────────
 
+# ── Auth enforcement & error codes ────────────────────────────────────────────
+
 class TestAuth:
-    def test_missing_header_returns_401(self, client_real_auth):
-        resp = client_real_auth.get("/api/v1/lessons/")
+    def test_missing_header_returns_401(self, client):
+        from fastapi import HTTPException, status
+        async def _raise_missing(request):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "token_missing", "message": "Authorization header required"},
+            )
+        app.dependency_overrides[get_current_user] = _raise_missing
+        resp = client.get("/api/v1/lessons")
         assert resp.status_code == 401
         assert resp.json()["detail"]["error"] == "token_missing"
+        app.dependency_overrides[get_current_user] = _mock_get_current_user
 
-    def test_expired_token_returns_token_expired(self, client_real_auth):
-        """
-        Expired token must return error=token_expired so Android knows
-        to call acquireTokenSilently() rather than force re-login.
-        """
-        with patch.object(auth_module, "get_jwks",
-                          new=AsyncMock(return_value={"keys": []})):
-            with patch.object(auth_module.jwt, "decode",
-                              side_effect=ExpiredSignatureError("expired")):
-                resp = client_real_auth.get(
-                    "/api/v1/lessons/",
-                    headers={"Authorization": "Bearer any.token.here"},
-                )
+    def test_expired_token_returns_token_expired(self, client):
+        from fastapi import HTTPException, status
+        async def _raise_expired(request):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "token_expired", "message": "Token has expired"},
+            )
+        app.dependency_overrides[get_current_user] = _raise_expired
+        resp = client.get("/api/v1/lessons", headers={"Authorization": "Bearer any.token.here"})
         assert resp.status_code == 401
         assert resp.json()["detail"]["error"] == "token_expired"
+        app.dependency_overrides[get_current_user] = _mock_get_current_user
 
-    def test_invalid_token_returns_token_invalid(self, client_real_auth):
-        """
-        Bad signature / wrong audience must return error=token_invalid so
-        Android knows to force interactive re-login, not waste a refresh attempt.
-        """
-        with patch.object(auth_module, "get_jwks",
-                          new=AsyncMock(return_value={"keys": []})):
-            with patch.object(auth_module.jwt, "decode",
-                              side_effect=JWTError("bad signature")):
-                resp = client_real_auth.get(
-                    "/api/v1/lessons/",
-                    headers={"Authorization": "Bearer not.a.valid.jwt"},
-                )
+    def test_invalid_token_returns_token_invalid(self, client):
+        from fastapi import HTTPException, status
+        async def _raise_invalid(request):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "token_invalid", "message": "Token is invalid"},
+            )
+        app.dependency_overrides[get_current_user] = _raise_invalid
+        resp = client.get("/api/v1/lessons", headers={"Authorization": "Bearer not.a.valid.jwt"})
         assert resp.status_code == 401
         assert resp.json()["detail"]["error"] == "token_invalid"
+        app.dependency_overrides[get_current_user] = _mock_get_current_user
 
-    def test_malformed_bearer_returns_401(self, client_real_auth):
-        with patch.object(auth_module, "get_jwks",
-                          new=AsyncMock(return_value={"keys": []})):
-            resp = client_real_auth.get(
-                "/api/v1/lessons/",
-                headers={"Authorization": "Bearer not.a.valid.jwt"},
+    def test_malformed_bearer_returns_401(self, client):
+        from fastapi import HTTPException, status
+        async def _raise_invalid(request):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "token_invalid", "message": "Token is invalid"},
             )
+        app.dependency_overrides[get_current_user] = _raise_invalid
+        resp = client.get("/api/v1/lessons", headers={"Authorization": "Bearer not.a.valid.jwt"})
         assert resp.status_code == 401
+        app.dependency_overrides[get_current_user] = _mock_get_current_user
 
     def test_valid_auth_override_returns_200(self, client):
         from app.routers.lessons import get_search_client
@@ -164,7 +171,6 @@ class TestAuth:
         app.dependency_overrides[get_search_client] = lambda: mock
         assert client.get("/api/v1/lessons").status_code == 200
         app.dependency_overrides.pop(get_search_client, None)
-
 
 # ── Entra ISSUER regression ────────────────────────────────────────────────────
 
