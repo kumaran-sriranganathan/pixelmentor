@@ -1,0 +1,60 @@
+# .github/workflows/populate-search-index.yml
+# -------------------------------------------
+# Manually triggered (or called from deploy workflows) to (re)populate
+# the Azure AI Search photography-lessons index.
+#
+# Usage:
+#   workflow_dispatch — run manually from the Actions tab for dev or prod.
+#   workflow_call     — called by dev-deploy.yml / prod-deploy.yml after
+#                       a successful container deploy.
+
+name: Populate Search Index
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+    secrets:
+      AZURE_SEARCH_ENDPOINT:
+        required: true
+      AZURE_SEARCH_KEY:
+        required: true
+
+jobs:
+  populate:
+    name: Populate ${{ inputs.environment }} index
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            azure-search-documents==11.6.0b8 \
+            azure-core
+
+      - name: Populate index
+        env:
+          AZURE_SEARCH_ENDPOINT: ${{ secrets.AZURE_SEARCH_ENDPOINT }}
+          AZURE_SEARCH_KEY: ${{ secrets.AZURE_SEARCH_KEY }}
+          SEARCH_INDEX_NAME: photography-lessons
+        run: python scripts/populate_search_index.py

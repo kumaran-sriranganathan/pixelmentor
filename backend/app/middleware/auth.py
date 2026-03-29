@@ -3,18 +3,18 @@
 ###############################################################################
 
 import logging
+import time
 from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPBearer
-from jose import jwt, JWTError
+from jose import jwt, JWTError, ExpiredSignatureError
 import httpx
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 # Microsoft Entra External ID JWKS endpoint
-# Format: https://<tenant>.ciamlogin.com/<tenant>.onmicrosoft.com/discovery/v2.0/keys
 JWKS_URL = (
     f"https://{settings.entra_tenant_id}.ciamlogin.com"
     f"/{settings.entra_tenant_id}/discovery/v2.0/keys"
@@ -27,28 +27,52 @@ ISSUER = (
     f"/{settings.entra_tenant_id}/v2.0"
 )
 
-_jwks_cache = None
+# JWKS cache — refreshed automatically every 24 hours so key rotations
+# are picked up without needing a failed request to trigger it.
+JWKS_CACHE_TTL_SECONDS = 86400  # 24 hours
+
+_jwks_cache: dict | None = None
+_jwks_cached_at: float = 0.0
 
 
-async def get_jwks():
-    """Fetch and cache JWKS from Entra External ID."""
-    global _jwks_cache
-    if _jwks_cache is None:
+async def get_jwks() -> dict:
+    """
+    Fetch and cache JWKS from Entra External ID.
+    Cache expires after 24h (normal rotation) or immediately on JWTError
+    (emergency rotation — bad token triggers a fresh fetch on next request).
+    """
+    global _jwks_cache, _jwks_cached_at
+
+    age = time.monotonic() - _jwks_cached_at
+    if _jwks_cache is None or age > JWKS_CACHE_TTL_SECONDS:
         async with httpx.AsyncClient() as client:
             response = await client.get(JWKS_URL)
             response.raise_for_status()
             _jwks_cache = response.json()
+            _jwks_cached_at = time.monotonic()
+            logger.info("JWKS cache refreshed")
+
     return _jwks_cache
+
+
+def _clear_jwks_cache() -> None:
+    global _jwks_cache, _jwks_cached_at
+    _jwks_cache = None
+    _jwks_cached_at = 0.0
 
 
 async def get_current_user(request: Request) -> dict:
     """
     Validate Microsoft Entra External ID Bearer token.
     Returns decoded token claims (sub, email, name, etc.)
-    In dev mode, accepts a mock token for local testing.
+
+    401 error codes (keyed by Android MSAL client):
+      token_missing  → no Authorization header — prompt login
+      token_expired  → valid token, past exp — silent refresh via acquireTokenSilently()
+      token_invalid  → bad signature / wrong audience / malformed — force re-login
     """
     if settings.environment == "dev":
-        # Allow mock auth in dev — never in prod
+        # Bypass JWT validation in dev — never runs in prod
         return {
             "sub": "dev-user-123",
             "email": "dev@pixelmentor.com",
@@ -61,7 +85,7 @@ async def get_current_user(request: Request) -> dict:
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid authorization header",
+            detail={"error": "token_missing", "message": "Authorization header required"},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -74,35 +98,46 @@ async def get_current_user(request: Request) -> dict:
             token,
             jwks,
             algorithms=["RS256"],
-            audience=settings.entra_api_client_id,   # PixelMentor API client ID
+            audience=settings.entra_api_client_id,
             issuer=ISSUER,
             options={"verify_exp": True},
         )
 
-        # Ensure required claims are present
         if not payload.get("sub"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token missing required claims",
+                detail={"error": "token_invalid", "message": "Token missing required claims"},
             )
 
         return payload
 
-    except JWTError as e:
-        logger.warning(f"JWT validation failed: {e}")
-        # Invalidate JWKS cache in case keys rotated
-        global _jwks_cache
-        _jwks_cache = None
+    except ExpiredSignatureError:
+        # Structurally valid token but past its exp claim.
+        # Android: call acquireTokenSilently(), then retry the request.
+        logger.info("Expired token rejected")
+        _clear_jwks_cache()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail={"error": "token_expired", "message": "Token has expired — refresh and retry"},
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    except JWTError as e:
+        # Bad signature, wrong audience/issuer, malformed — not recoverable by refresh.
+        # Android: force interactive re-login.
+        logger.warning(f"Invalid token rejected: {e}")
+        _clear_jwks_cache()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "token_invalid", "message": "Token is invalid"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     except httpx.HTTPError as e:
         logger.error(f"Failed to fetch JWKS: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication service unavailable",
+            detail={"error": "auth_unavailable", "message": "Authentication service unavailable"},
         )
 
 
