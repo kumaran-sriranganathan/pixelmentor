@@ -7,6 +7,7 @@ import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
+from fastapi import HTTPException, status
 from jose import JWTError, ExpiredSignatureError
 
 from app.main import app
@@ -41,34 +42,25 @@ def _make_settings(environment: str):
     return _Patched()
 
 
-# ── Fixtures ───────────────────────────────────────────────────────────────────
-
-@pytest.fixture
-def client():
-    """Auth dependency overridden — use for all endpoint logic tests."""
-    app.dependency_overrides[get_current_user] = _mock_get_current_user
-    with TestClient(app) as c:
-        yield c
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def client_real_auth():
-    """No dependency override, environment forced to prod — real JWT runs."""
-    from app.routers.lessons import get_search_client
-    app.dependency_overrides.clear()
-
+def _mock_search_client():
     mock = MagicMock()
     mock_results = MagicMock()
     mock_results.__iter__ = MagicMock(return_value=iter([]))
     mock_results.get_count = MagicMock(return_value=0)
     mock.search.return_value = mock_results
-    app.dependency_overrides[get_search_client] = lambda: mock
+    return mock
 
-    with patch.object(auth_module, "settings", _make_settings("prod")):
-        with TestClient(app) as c:
-            yield c
 
+# ── Fixtures ───────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def client():
+    """Auth and search dependencies overridden — use for all endpoint logic tests."""
+    from app.routers.lessons import get_search_client
+    app.dependency_overrides[get_current_user] = _mock_get_current_user
+    app.dependency_overrides[get_search_client] = _mock_search_client
+    with TestClient(app) as c:
+        yield c
     app.dependency_overrides.clear()
 
 
@@ -107,12 +99,9 @@ class TestHealth:
 
 # ── Auth enforcement & error codes ────────────────────────────────────────────
 
-# ── Auth enforcement & error codes ────────────────────────────────────────────
-
 class TestAuth:
     def test_missing_header_returns_401(self, client):
-        from fastapi import HTTPException, status
-        async def _raise_missing(request):
+        async def _raise_missing():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error": "token_missing", "message": "Authorization header required"},
@@ -121,11 +110,9 @@ class TestAuth:
         resp = client.get("/api/v1/lessons")
         assert resp.status_code == 401
         assert resp.json()["detail"]["error"] == "token_missing"
-        app.dependency_overrides[get_current_user] = _mock_get_current_user
 
     def test_expired_token_returns_token_expired(self, client):
-        from fastapi import HTTPException, status
-        async def _raise_expired(request):
+        async def _raise_expired():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error": "token_expired", "message": "Token has expired"},
@@ -134,11 +121,9 @@ class TestAuth:
         resp = client.get("/api/v1/lessons", headers={"Authorization": "Bearer any.token.here"})
         assert resp.status_code == 401
         assert resp.json()["detail"]["error"] == "token_expired"
-        app.dependency_overrides[get_current_user] = _mock_get_current_user
 
     def test_invalid_token_returns_token_invalid(self, client):
-        from fastapi import HTTPException, status
-        async def _raise_invalid(request):
+        async def _raise_invalid():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error": "token_invalid", "message": "Token is invalid"},
@@ -147,11 +132,9 @@ class TestAuth:
         resp = client.get("/api/v1/lessons", headers={"Authorization": "Bearer not.a.valid.jwt"})
         assert resp.status_code == 401
         assert resp.json()["detail"]["error"] == "token_invalid"
-        app.dependency_overrides[get_current_user] = _mock_get_current_user
 
     def test_malformed_bearer_returns_401(self, client):
-        from fastapi import HTTPException, status
-        async def _raise_invalid(request):
+        async def _raise_invalid():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error": "token_invalid", "message": "Token is invalid"},
@@ -159,18 +142,10 @@ class TestAuth:
         app.dependency_overrides[get_current_user] = _raise_invalid
         resp = client.get("/api/v1/lessons", headers={"Authorization": "Bearer not.a.valid.jwt"})
         assert resp.status_code == 401
-        app.dependency_overrides[get_current_user] = _mock_get_current_user
 
     def test_valid_auth_override_returns_200(self, client):
-        from app.routers.lessons import get_search_client
-        mock = MagicMock()
-        mock_results = MagicMock()
-        mock_results.__iter__ = MagicMock(return_value=iter([]))
-        mock_results.get_count = MagicMock(return_value=0)
-        mock.search.return_value = mock_results
-        app.dependency_overrides[get_search_client] = lambda: mock
         assert client.get("/api/v1/lessons").status_code == 200
-        app.dependency_overrides.pop(get_search_client, None)
+
 
 # ── Entra ISSUER regression ────────────────────────────────────────────────────
 
@@ -290,22 +265,9 @@ class TestJWKSCache:
 
 class TestLessons:
     def test_list_returns_200_and_list(self, client):
-        from app.routers.lessons import get_search_client
-        mock = MagicMock()
-        mock_results = MagicMock()
-        mock_results.__iter__ = MagicMock(return_value=iter([
-            {"id": "lesson-001", "title": "Test", "description": "Desc",
-             "category": "fundamentals", "difficulty": "beginner",
-             "duration_minutes": 15, "is_pro": False, "order": 1, "tags": []}
-        ]))
-        mock_results.get_count = MagicMock(return_value=1)
-        mock.search.return_value = mock_results
-        app.dependency_overrides[get_search_client] = lambda: mock
-
         resp = client.get("/api/v1/lessons")
         assert resp.status_code == 200
         assert isinstance(resp.json()["lessons"], list)
-        app.dependency_overrides.pop(get_search_client, None)
 
     def test_list_items_have_required_fields(self, client):
         from app.routers.lessons import get_search_client
@@ -324,20 +286,10 @@ class TestLessons:
         assert len(lessons) > 0
         for lesson in lessons:
             assert {"id", "title", "difficulty"} <= lesson.keys()
-        app.dependency_overrides.pop(get_search_client, None)
 
     def test_filter_by_skill_level(self, client):
-        from app.routers.lessons import get_search_client
-        mock = MagicMock()
-        mock_results = MagicMock()
-        mock_results.__iter__ = MagicMock(return_value=iter([]))
-        mock_results.get_count = MagicMock(return_value=0)
-        mock.search.return_value = mock_results
-        app.dependency_overrides[get_search_client] = lambda: mock
-
         resp = client.get("/api/v1/lessons?difficulty=beginner")
         assert resp.status_code == 200
-        app.dependency_overrides.pop(get_search_client, None)
 
     def test_get_by_id(self, client):
         from app.routers.lessons import get_search_client
@@ -353,7 +305,6 @@ class TestLessons:
         resp = client.get("/api/v1/lessons/lesson-001")
         assert resp.status_code == 200
         assert resp.json()["id"] == "lesson-001"
-        app.dependency_overrides.pop(get_search_client, None)
 
     def test_not_found_returns_404(self, client):
         from azure.core.exceptions import HttpResponseError
@@ -365,7 +316,6 @@ class TestLessons:
         app.dependency_overrides[get_search_client] = lambda: mock
 
         assert client.get("/api/v1/lessons/does-not-exist-999").status_code == 404
-        app.dependency_overrides.pop(get_search_client, None)
 
 
 # ── Users ──────────────────────────────────────────────────────────────────────
