@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">pm-dev-api.happymushroom-b6080bcd.australiaeast.azurecontainerapps.io</domain>
+        <domain includeSubdomains="true">pm-prod-api.happyfield-58cc0921.australiaeast.azurecontainerapps.io</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

@@ -57,10 +57,24 @@ def _mock_search_client():
 def client():
     """Auth and search dependencies overridden — use for all endpoint logic tests."""
     from app.routers.lessons import get_search_client
-    app.dependency_overrides[get_current_user] = _mock_get_current_user
-    app.dependency_overrides[get_search_client] = _mock_search_client
-    with TestClient(app) as c:
-        yield c
+    from app.utils.supabase_client import SupabaseService
+
+    mock_profile = {
+        "user_id": "dev-user-123",
+        "display_name": "Dev User",
+        "skill_level": "beginner",
+        "photos_analyzed": 0,
+        "lessons_completed": 0,
+        "streak_days": 0,
+        "plan": "free",
+    }
+
+    with patch.object(SupabaseService, "__init__", return_value=None), \
+         patch.object(SupabaseService, "get_user_profile", return_value=mock_profile):
+        app.dependency_overrides[get_current_user] = _mock_get_current_user
+        app.dependency_overrides[get_search_client] = _mock_search_client
+        with TestClient(app) as c:
+            yield c
     app.dependency_overrides.clear()
 
 
@@ -181,7 +195,7 @@ class TestJWKSCache:
                 )
                 return await auth_module.get_jwks()
 
-        result = asyncio.get_event_loop().run_until_complete(_run())
+        result = asyncio.run(_run())
         assert result == mock_keys
         assert auth_module._jwks_cache == mock_keys
 
@@ -195,7 +209,7 @@ class TestJWKSCache:
                 mock_client_cls.assert_not_called()
                 return result
 
-        result = asyncio.get_event_loop().run_until_complete(_run())
+        result = asyncio.run(_run())
         assert result == {"keys": [{"kid": "cached"}]}
 
     def test_cache_refreshed_after_ttl(self):
@@ -213,7 +227,7 @@ class TestJWKSCache:
                 )
                 return await auth_module.get_jwks()
 
-        result = asyncio.get_event_loop().run_until_complete(_run())
+        result = asyncio.run(_run())
         assert result == fresh_keys
 
     def test_cache_cleared_on_expired_token(self):
@@ -224,18 +238,18 @@ class TestJWKSCache:
         mock_request = MagicMock()
         mock_request.headers = {"Authorization": "Bearer any.token.here"}
 
-        with patch.object(auth_module, "settings", _make_settings("prod")):
-            with patch.object(auth_module, "get_jwks",
-                              new=AsyncMock(return_value={"keys": []})):
-                with patch.object(auth_module.jwt, "decode",
-                                  side_effect=ExpiredSignatureError("expired")):
-                    try:
-                        asyncio.get_event_loop().run_until_complete(
-                            auth_module.get_current_user(mock_request)
-                        )
-                    except Exception:
-                        pass
+        async def _run():
+            with patch.object(auth_module, "settings", _make_settings("prod")):
+                with patch.object(auth_module, "get_jwks",
+                                  new=AsyncMock(return_value={"keys": []})):
+                    with patch.object(auth_module.jwt, "decode",
+                                      side_effect=ExpiredSignatureError("expired")):
+                        try:
+                            await auth_module.get_current_user(mock_request)
+                        except Exception:
+                            pass
 
+        asyncio.run(_run())
         assert auth_module._jwks_cache is None
 
     def test_cache_cleared_on_jwt_error(self):
@@ -246,18 +260,18 @@ class TestJWKSCache:
         mock_request = MagicMock()
         mock_request.headers = {"Authorization": "Bearer any.token.here"}
 
-        with patch.object(auth_module, "settings", _make_settings("prod")):
-            with patch.object(auth_module, "get_jwks",
-                              new=AsyncMock(return_value={"keys": []})):
-                with patch.object(auth_module.jwt, "decode",
-                                  side_effect=JWTError("bad sig")):
-                    try:
-                        asyncio.get_event_loop().run_until_complete(
-                            auth_module.get_current_user(mock_request)
-                        )
-                    except Exception:
-                        pass
+        async def _run():
+            with patch.object(auth_module, "settings", _make_settings("prod")):
+                with patch.object(auth_module, "get_jwks",
+                                  new=AsyncMock(return_value={"keys": []})):
+                    with patch.object(auth_module.jwt, "decode",
+                                      side_effect=JWTError("bad sig")):
+                        try:
+                            await auth_module.get_current_user(mock_request)
+                        except Exception:
+                            pass
 
+        asyncio.run(_run())
         assert auth_module._jwks_cache is None
 
 

@@ -14,7 +14,7 @@ from typing import Optional
 from app.agents.photo_coach import PhotoCoachAgent
 from app.models.analysis import PhotoAnalysisResponse
 from app.utils.storage import upload_photo, generate_sas_url
-from app.utils.cosmos_client import CosmosService
+from app.utils.supabase_client import SupabaseService as CosmosService
 from app.middleware.auth import get_current_user
 from app.config import settings
 

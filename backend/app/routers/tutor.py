@@ -12,7 +12,7 @@ from openai import AsyncAzureOpenAI
 
 from app.config import settings
 from app.models.analysis import ChatRequest, ChatResponse
-from app.utils.cosmos_client import CosmosService
+from app.utils.supabase_client import SupabaseService as CosmosService
 from app.middleware.auth import get_current_user
 
 router = APIRouter()
