@@ -1,58 +1,44 @@
 ###############################################################################
-# utils/storage.py — Azure Blob Storage helpers
+# utils/storage.py — Cloudflare R2 storage helpers
+# Replaces Azure Blob Storage — do not delete old version from git history
 ###############################################################################
 
-import uuid
-from datetime import datetime, timedelta, timezone
+import boto3
+from botocore.config import Config
 from app.config import settings
 
-try:
-    from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
-    STORAGE_AVAILABLE = True
-except ImportError:
-    STORAGE_AVAILABLE = False
 
-
-def get_blob_service_client():
-    if not STORAGE_AVAILABLE or not settings.storage_connection_string:
-        return None
-    try:
-        return BlobServiceClient.from_connection_string(settings.storage_connection_string)
-    except Exception:
-        return None
+def get_r2_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=f"https://{settings.r2_account_id}.r2.cloudflarestorage.com",
+        aws_access_key_id=settings.r2_access_key_id,
+        aws_secret_access_key=settings.r2_secret_access_key,
+        config=Config(signature_version="s3v4"),
+        region_name="auto",
+    )
 
 
 async def upload_photo(image_data: bytes, blob_path: str, content_type: str = "image/jpeg") -> str:
-    """Upload photo bytes to blob storage. Returns the blob URL."""
-    client = get_blob_service_client()
-
-    if not client:
-        return f"https://{settings.storage_account_name}.blob.core.windows.net/{settings.photos_container}/{blob_path}"
-
-    try:
-        blob_client = client.get_blob_client(container=settings.photos_container, blob=blob_path)
-        blob_client.upload_blob(image_data, overwrite=True, content_settings={"content_type": content_type})
-        return blob_client.url
-    except Exception as e:
-        raise RuntimeError(f"Failed to upload photo: {e}")
+    """Upload photo bytes to R2. Returns the public URL."""
+    client = get_r2_client()
+    client.put_object(
+        Bucket=settings.r2_bucket_name,
+        Key=blob_path,
+        Body=image_data,
+        ContentType=content_type,
+    )
+    if settings.r2_public_domain:
+        return f"https://{settings.r2_public_domain}/{blob_path}"
+    return f"https://{settings.r2_account_id}.r2.cloudflarestorage.com/{settings.r2_bucket_name}/{blob_path}"
 
 
 async def generate_sas_url(blob_path: str, expiry_minutes: int = 10) -> str:
-    """Generate a time-limited SAS URL for a blob."""
-    client = get_blob_service_client()
-    if not client or not settings.storage_account_name:
-        return f"https://{settings.storage_account_name}.blob.core.windows.net/{settings.photos_container}/{blob_path}"
-
-    try:
-        account_key = client.credential.account_key
-        sas_token = generate_blob_sas(
-            account_name=settings.storage_account_name,
-            container_name=settings.photos_container,
-            blob_name=blob_path,
-            account_key=account_key,
-            permission=BlobSasPermissions(read=True),
-            expiry=datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes),
-        )
-        return f"https://{settings.storage_account_name}.blob.core.windows.net/{settings.photos_container}/{blob_path}?{sas_token}"
-    except Exception as e:
-        raise RuntimeError(f"Failed to generate SAS URL: {e}")
+    """Generate a time-limited presigned URL for a photo."""
+    client = get_r2_client()
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.r2_bucket_name, "Key": blob_path},
+        ExpiresIn=expiry_minutes * 60,
+    )
+    return url

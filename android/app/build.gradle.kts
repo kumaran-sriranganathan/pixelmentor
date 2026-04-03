@@ -55,19 +55,6 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-
-    // Force resolution of the display-mask dependency that MSAL 5.x pulls in.
-    // The artifact exists in the Azure DevOps feed but under a different version.
-    configurations.all {
-        resolutionStrategy {
-            force("com.microsoft.device.display:display-mask:0.3.0")
-            // If 0.3.0 still can't resolve, substitute with a no-op empty module
-            dependencySubstitution {
-                substitute(module("com.microsoft.device.display:display-mask"))
-                    .using(module("com.microsoft.device.display:display-mask:0.3.0"))
-            }
-        }
-    }
 }
 
 dependencies {
