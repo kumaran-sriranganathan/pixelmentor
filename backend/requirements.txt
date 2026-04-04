@@ -36,3 +36,5 @@ boto3==1.35.0
 azure-monitor-opentelemetry==1.6.4
 
 supabase==2.10.0
+
+typesense==0.21.0

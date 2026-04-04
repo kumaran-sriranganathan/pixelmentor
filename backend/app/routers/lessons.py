@@ -1,18 +1,15 @@
-"""
-backend/app/routers/lessons.py
--------------------------------
-Replaces the hardcoded lessons list with real Azure AI Search queries.
-"""
+###############################################################################
+# routers/lessons.py — Lesson library endpoints (Typesense-backed)
+# Replaces Azure AI Search — do not delete old version from git history
+###############################################################################
 
 from __future__ import annotations
 
 import logging
 from typing import Optional
 
-from azure.core.credentials import AzureKeyCredential
-from azure.core.exceptions import HttpResponseError
-from azure.search.documents import SearchClient
-from azure.search.documents.models import QueryType
+import typesense
+import typesense.exceptions
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -52,54 +49,15 @@ class LessonsResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Search client dependency
+# Typesense client dependency
 # ---------------------------------------------------------------------------
 
-def get_search_client() -> SearchClient:
-    return SearchClient(
-        endpoint=settings.azure_search_endpoint,
-        index_name=settings.search_index_name,
-        credential=AzureKeyCredential(settings.azure_search_key),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-SELECT_SUMMARY_FIELDS = (
-    "id,title,description,category,difficulty,duration_minutes,is_pro,order,tags"
-)
-SELECT_DETAIL_FIELDS = SELECT_SUMMARY_FIELDS + ",content"
-
-
-def _build_filter(category: Optional[str], difficulty: Optional[str]) -> Optional[str]:
-    parts: list[str] = []
-    if category:
-        safe = category.replace("'", "''")
-        parts.append(f"category eq '{safe}'")
-    if difficulty:
-        safe = difficulty.replace("'", "''")
-        parts.append(f"difficulty eq '{safe}'")
-    return " and ".join(parts) if parts else None
-
-
-def _doc_to_summary(doc: dict) -> LessonSummary:
-    return LessonSummary(
-        id=doc["id"],
-        title=doc["title"],
-        description=doc["description"],
-        category=doc["category"],
-        difficulty=doc["difficulty"],
-        duration_minutes=doc["duration_minutes"],
-        is_pro=doc.get("is_pro", False),
-        order=doc.get("order", 0),
-        tags=doc.get("tags") or [],
-    )
-
-
-def _doc_to_detail(doc: dict) -> LessonDetail:
-    return LessonDetail(**_doc_to_summary(doc).model_dump(), content=doc.get("content", ""))
+def get_typesense_client() -> typesense.Client:
+    return typesense.Client({
+        "nodes": [{"host": settings.typesense_host, "port": "443", "protocol": "https"}],
+        "api_key": settings.typesense_api_key,
+        "connection_timeout_seconds": 5,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -114,52 +72,50 @@ async def list_lessons(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
-    search_client: SearchClient = Depends(get_search_client),
+    typesense_client: typesense.Client = Depends(get_typesense_client),
 ) -> LessonsResponse:
-    skip = (page - 1) * page_size
-    filter_expr = _build_filter(category, difficulty)
+    filter_parts = []
+    if category:
+        filter_parts.append(f"category:={category}")
+    if difficulty:
+        filter_parts.append(f"difficulty:={difficulty}")
+
+    params = {
+        "q": q or "*",
+        "query_by": "title,description,content",
+        "sort_by": "order:asc" if not q else "_text_match:desc",
+        "page": page,
+        "per_page": page_size,
+        "include_fields": "id,title,description,category,difficulty,duration_minutes,is_pro,order,tags",
+    }
+    if filter_parts:
+        params["filter_by"] = " && ".join(filter_parts)
 
     try:
-        results = search_client.search(
-            search_text=q or "*",
-            query_type=QueryType.SIMPLE,
-            select=SELECT_SUMMARY_FIELDS,
-            filter=filter_expr,
-            order_by=[] if q else ["order asc"],
-            skip=skip,
-            top=page_size,
-            include_total_count=True,
+        result = typesense_client.collections["photography-lessons"].documents.search(params)
+        lessons = [LessonSummary(**hit["document"]) for hit in result["hits"]]
+        return LessonsResponse(
+            lessons=lessons,
+            total_count=result["found"],
+            page=page,
+            page_size=page_size,
         )
-        lessons = [_doc_to_summary(doc) for doc in results]
-        total = results.get_count() or 0
-
-    except HttpResponseError as exc:
-        logger.error("Azure AI Search error: %s", exc.message)
+    except Exception as exc:
+        logger.error("Typesense search error: %s", exc)
         raise HTTPException(status_code=502, detail="Search service unavailable") from exc
-
-    return LessonsResponse(
-        lessons=lessons,
-        total_count=total,
-        page=page,
-        page_size=page_size,
-    )
 
 
 @router.get("/{lesson_id}", response_model=LessonDetail)
 async def get_lesson(
     lesson_id: str,
     current_user: dict = Depends(get_current_user),
-    search_client: SearchClient = Depends(get_search_client),
+    typesense_client: typesense.Client = Depends(get_typesense_client),
 ) -> LessonDetail:
     try:
-        doc = search_client.get_document(
-            key=lesson_id,
-            selected_fields=SELECT_DETAIL_FIELDS.split(","),
-        )
-    except HttpResponseError as exc:
-        if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Lesson not found")
-        logger.error("Azure AI Search error: %s", exc.message)
+        doc = typesense_client.collections["photography-lessons"].documents[lesson_id].retrieve()
+        return LessonDetail(**doc)
+    except typesense.exceptions.ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    except Exception as exc:
+        logger.error("Typesense error: %s", exc)
         raise HTTPException(status_code=502, detail="Search service unavailable") from exc
-
-    return _doc_to_detail(doc)

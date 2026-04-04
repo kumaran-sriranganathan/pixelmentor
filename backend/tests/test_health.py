@@ -5,6 +5,7 @@
 import asyncio
 import time
 import pytest
+import typesense.exceptions
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from fastapi import HTTPException, status
@@ -42,21 +43,12 @@ def _make_settings(environment: str):
     return _Patched()
 
 
-def _mock_search_client():
-    mock = MagicMock()
-    mock_results = MagicMock()
-    mock_results.__iter__ = MagicMock(return_value=iter([]))
-    mock_results.get_count = MagicMock(return_value=0)
-    mock.search.return_value = mock_results
-    return mock
-
-
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def client():
     """Auth and search dependencies overridden — use for all endpoint logic tests."""
-    from app.routers.lessons import get_search_client
+    from app.routers.lessons import get_typesense_client
     from app.utils.supabase_client import SupabaseService
 
     mock_profile = {
@@ -69,10 +61,16 @@ def client():
         "plan": "free",
     }
 
+    mock_typesense = MagicMock()
+    mock_typesense.collections.__getitem__.return_value.documents.search.return_value = {
+        "hits": [],
+        "found": 0,
+    }
+
     with patch.object(SupabaseService, "__init__", return_value=None), \
          patch.object(SupabaseService, "get_user_profile", return_value=mock_profile):
         app.dependency_overrides[get_current_user] = _mock_get_current_user
-        app.dependency_overrides[get_search_client] = _mock_search_client
+        app.dependency_overrides[get_typesense_client] = lambda: mock_typesense
         with TestClient(app) as c:
             yield c
     app.dependency_overrides.clear()
@@ -284,17 +282,17 @@ class TestLessons:
         assert isinstance(resp.json()["lessons"], list)
 
     def test_list_items_have_required_fields(self, client):
-        from app.routers.lessons import get_search_client
+        from app.routers.lessons import get_typesense_client
         mock = MagicMock()
-        mock_results = MagicMock()
-        mock_results.__iter__ = MagicMock(return_value=iter([
-            {"id": "lesson-001", "title": "Test", "description": "Desc",
-             "category": "fundamentals", "difficulty": "beginner",
-             "duration_minutes": 15, "is_pro": False, "order": 1, "tags": []}
-        ]))
-        mock_results.get_count = MagicMock(return_value=1)
-        mock.search.return_value = mock_results
-        app.dependency_overrides[get_search_client] = lambda: mock
+        mock.collections.__getitem__.return_value.documents.search.return_value = {
+            "hits": [{"document": {
+                "id": "lesson-001", "title": "Test", "description": "Desc",
+                "category": "fundamentals", "difficulty": "beginner",
+                "duration_minutes": 15, "is_pro": False, "order": 1, "tags": []
+            }}],
+            "found": 1,
+        }
+        app.dependency_overrides[get_typesense_client] = lambda: mock
 
         lessons = client.get("/api/v1/lessons").json()["lessons"]
         assert len(lessons) > 0
@@ -306,28 +304,26 @@ class TestLessons:
         assert resp.status_code == 200
 
     def test_get_by_id(self, client):
-        from app.routers.lessons import get_search_client
+        from app.routers.lessons import get_typesense_client
         mock = MagicMock()
-        mock.get_document.return_value = {
+        mock.collections.__getitem__.return_value.documents.__getitem__.return_value.retrieve.return_value = {
             "id": "lesson-001", "title": "Test", "description": "Desc",
             "category": "fundamentals", "difficulty": "beginner",
             "duration_minutes": 15, "is_pro": False, "order": 1,
             "tags": [], "content": "Full content."
         }
-        app.dependency_overrides[get_search_client] = lambda: mock
+        app.dependency_overrides[get_typesense_client] = lambda: mock
 
         resp = client.get("/api/v1/lessons/lesson-001")
         assert resp.status_code == 200
         assert resp.json()["id"] == "lesson-001"
 
     def test_not_found_returns_404(self, client):
-        from azure.core.exceptions import HttpResponseError
-        from app.routers.lessons import get_search_client
+        from app.routers.lessons import get_typesense_client
         mock = MagicMock()
-        err = HttpResponseError(message="Not found")
-        err.status_code = 404
-        mock.get_document.side_effect = err
-        app.dependency_overrides[get_search_client] = lambda: mock
+        mock.collections.__getitem__.return_value.documents.__getitem__.return_value.retrieve.side_effect = \
+            typesense.exceptions.ObjectNotFound("lesson", "not found")
+        app.dependency_overrides[get_typesense_client] = lambda: mock
 
         assert client.get("/api/v1/lessons/does-not-exist-999").status_code == 404
 

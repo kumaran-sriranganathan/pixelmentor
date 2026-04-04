@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     r2_secret_access_key: str = ""
     r2_bucket_name: str = "pixelmentor-photos"
     r2_public_domain: str = ""
+    
+    # ── Typesense ─────────────────────────────────────────────────────────────
+    typesense_host: str = ""
+    typesense_api_key: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
