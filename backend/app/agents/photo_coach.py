@@ -8,7 +8,7 @@ import logging
 from typing import TypedDict, Optional, List
 
 from langgraph.graph import StateGraph, END
-from openai import AsyncAzureOpenAI
+from openai import AsyncOpenAI
 from azure.ai.vision.imageanalysis.aio import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 from azure.core.credentials import AzureKeyCredential
@@ -39,12 +39,8 @@ class PhotoCoachState(TypedDict):
 
 
 # ── Azure Clients (async) ─────────────────────────────────────────────────────
-def get_openai_client() -> AsyncAzureOpenAI:
-    return AsyncAzureOpenAI(
-        azure_endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-        api_version=settings.azure_openai_api_version,
-    )
+def get_openai_client() -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=settings.openai_api_key)
 
 def get_vision_client() -> ImageAnalysisClient:
     return ImageAnalysisClient(
@@ -130,7 +126,7 @@ Additional context from AI Vision: {json.dumps(state.get('vision_metadata', {}))
 
     try:
         response = await client.chat.completions.create(
-            model=settings.gpt4o_deployment,
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
@@ -197,7 +193,7 @@ Return ONLY valid JSON."""
 
     try:
         response = await client.chat.completions.create(
-            model=settings.gpt4o_deployment,
+            model="gpt-4o",
             messages=[
                 {
                     "role": "user",
@@ -227,7 +223,7 @@ async def embed_feedback(state: PhotoCoachState) -> PhotoCoachState:
 
     try:
         response = await client.embeddings.create(
-            model=settings.embedding_deployment,
+            model="text-embedding-3-small",
             input=query_text,
         )
         return {**state, "embedding": response.data[0].embedding}

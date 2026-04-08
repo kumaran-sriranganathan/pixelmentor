@@ -8,7 +8,7 @@ from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from openai import AsyncAzureOpenAI
+from openai import AsyncOpenAI
 
 from app.config import settings
 from app.models.analysis import ChatRequest, ChatResponse
@@ -42,18 +42,14 @@ async def stream_tutor_response(
         yield "data: [DONE]\n\n"
         return
 
-    client = AsyncAzureOpenAI(
-        azure_endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-        api_version=settings.azure_openai_api_version,
-    )
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     system = TUTOR_SYSTEM_PROMPT.format(skill_profile=json.dumps(skill_profile))
 
     try:
         # Use stream=True with create() for async streaming
         stream = await client.chat.completions.create(
-            model=settings.gpt4o_deployment,
+            model="gpt-4o",
             messages=[{"role": "system", "content": system}] + messages,
             max_tokens=800,
             temperature=0.7,
@@ -107,16 +103,12 @@ async def generate_quiz(
     if not settings.azure_openai_endpoint:
         return {"error": "AI not configured"}
 
-    client = AsyncAzureOpenAI(
-        azure_endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-        api_version=settings.azure_openai_api_version,
-    )
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
     cosmos = CosmosService()
     skill_profile = await cosmos.get_skill_profile(current_user["sub"])
 
     response = await client.chat.completions.create(
-        model=settings.gpt4o_deployment,
+        model="gpt-4o",
         messages=[{
             "role": "user",
             "content": f"""Generate a multiple-choice photography quiz question about: {topic}
