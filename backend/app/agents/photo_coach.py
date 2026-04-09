@@ -9,8 +9,6 @@ from typing import TypedDict, Optional, List
 
 from langgraph.graph import StateGraph, END
 from openai import AsyncOpenAI
-from azure.ai.vision.imageanalysis.aio import ImageAnalysisClient
-from azure.ai.vision.imageanalysis.models import VisualFeatures
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import VectorizedQuery
@@ -42,12 +40,6 @@ class PhotoCoachState(TypedDict):
 def get_openai_client() -> AsyncOpenAI:
     return AsyncOpenAI(api_key=settings.openai_api_key)
 
-def get_vision_client() -> ImageAnalysisClient:
-    return ImageAnalysisClient(
-        endpoint=settings.azure_vision_endpoint,
-        credential=AzureKeyCredential(settings.azure_vision_key),
-    )
-
 def get_search_client() -> SearchClient:
     return SearchClient(
         endpoint=settings.azure_search_endpoint,
@@ -57,95 +49,55 @@ def get_search_client() -> SearchClient:
 
 
 # ── Agent Nodes ────────────────────────────────────────────────────────────────
-
-async def run_vision_analysis(state: PhotoCoachState) -> PhotoCoachState:
+async def run_vision_and_scoring(state: PhotoCoachState) -> PhotoCoachState:
     """
-    Node 1: Azure AI Vision — extract technical metadata.
-    (Objects, colors, captions, tags)
+    Combined Node 1+2: GPT-4o Vision — extract metadata AND score composition.
+    Eliminates the separate Azure Vision call.
     """
-    logger.info(f"[{state['analysis_id']}] Running Azure AI Vision")
-    try:
-        async with get_vision_client() as client:
-            result = await client.analyze(
-                image_url=state["image_url"],
-                visual_features=[
-                    VisualFeatures.OBJECTS,
-                    VisualFeatures.TAGS,
-                    VisualFeatures.DENSE_CAPTIONS,
-                    VisualFeatures.COLOR,
-                    VisualFeatures.SMART_CROPS,
-                ],
-            )
-        metadata = {
-            "dominant_colors": [c.name for c in (result.color.dominant_colors or [])],
-            "accent_color": result.color.accent_color if result.color else None,
-            "objects": [o.name for o in (result.objects.list or [])],
-            "tags": [t.name for t in (result.tags.list or []) if t.confidence > 0.7],
-            "caption": result.dense_captions.list[0].text if result.dense_captions else "",
-            "smart_crops": [
-                {"aspect_ratio": c.aspect_ratio, "bounding_box": str(c.bounding_box)}
-                for c in (result.smart_crops.list or [])
-            ],
-        }
-        return {**state, "vision_metadata": metadata}
-    except Exception as e:
-        logger.error(f"[{state['analysis_id']}] Vision analysis failed: {e}")
-        return {**state, "vision_metadata": {}, "error": str(e)}
-
-
-async def run_composition_scoring(state: PhotoCoachState) -> PhotoCoachState:
-    """
-    Node 2: GPT-4o Vision — score composition, lighting, colour.
-    Returns structured JSON: score + feedback items.
-    """
-    logger.info(f"[{state['analysis_id']}] Running GPT-4o composition scoring")
+    logger.info(f"[{state['analysis_id']}] Running GPT-4o vision and scoring")
     client = get_openai_client()
 
-    system_prompt = f"""You are an expert photography coach with 20 years of experience
-teaching {state['skill_level']}-level photographers.
-
-Analyse the provided photo and return ONLY valid JSON with this exact structure:
+    system_prompt = f"""You are an expert photography coach analysing a photo.
+Return ONLY valid JSON with this exact structure:
 {{
-  "composition_score": <integer 0-100>,
-  "lighting_score": <integer 0-100>,
-  "color_score": <integer 0-100>,
-  "overall_score": <integer 0-100>,
-  "strengths": [
-    {{"text": "<specific strength observation>", "category": "composition|lighting|color|focus"}}
-  ],
-  "improvements": [
-    {{"text": "<specific, actionable improvement>", "category": "composition|lighting|color|focus"}}
-  ],
-  "one_sentence_tip": "<single most impactful tip for a {state['skill_level']} photographer>",
-  "style_tags": ["<genre tag>"]
+  "composition_score": <int 0-100>,
+  "lighting_score": <int 0-100>,
+  "color_score": <int 0-100>,
+  "overall_score": <int 0-100>,
+  "dominant_colors": ["<color>"],
+  "objects": ["<object>"],
+  "tags": ["<tag>"],
+  "caption": "<one sentence description>",
+  "strengths": [{{"text": "<observation>", "category": "composition|lighting|color|focus"}}],
+  "improvements": [{{"text": "<improvement>", "category": "composition|lighting|color|focus"}}],
+  "one_sentence_tip": "<tip for {state['skill_level']} photographer>",
+  "style_tags": ["<genre>"]
 }}
-
-Be specific and technical. Reference actual photographic techniques (rule of thirds,
-leading lines, golden ratio, Rembrandt lighting, etc.). Adapt complexity to {state['skill_level']} level.
-Additional context from AI Vision: {json.dumps(state.get('vision_metadata', {}))}"""
+Be specific and technical. Adapt complexity to {state['skill_level']} level."""
 
     try:
         response = await client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": state["image_url"], "detail": "high"},
-                        },
-                        {"type": "text", "text": "Please analyse this photo."},
-                    ],
-                },
+                {"role": "user", "content": [
+                    {"type": "image_url",
+                     "image_url": {"url": state["image_url"], "detail": "high"}},
+                    {"type": "text", "text": "Analyse this photo."},
+                ]},
             ],
             response_format={"type": "json_object"},
             max_tokens=1000,
-            temperature=0.3,   # Low temperature for consistent scoring
+            temperature=0.3,
         )
 
         analysis = json.loads(response.choices[0].message.content)
+        vision_metadata = {
+            "dominant_colors": analysis.get("dominant_colors", []),
+            "objects": analysis.get("objects", []),
+            "tags": analysis.get("tags", []),
+            "caption": analysis.get("caption", ""),
+        }
         feedback_items = [
             {"text": s["text"], "type": "strength", "category": s["category"]}
             for s in analysis.get("strengths", [])
@@ -156,13 +108,14 @@ Additional context from AI Vision: {json.dumps(state.get('vision_metadata', {}))
 
         return {
             **state,
+            "vision_metadata": vision_metadata,
             "composition_score": analysis.get("overall_score", 70),
             "feedback_items": feedback_items,
         }
     except Exception as e:
-        logger.error(f"[{state['analysis_id']}] Composition scoring failed: {e}")
-        return {**state, "composition_score": 0, "feedback_items": [], "error": str(e)}
-
+        logger.error(f"[{state['analysis_id']}] Vision and scoring failed: {e}")
+        return {**state, "vision_metadata": {}, "composition_score": 0,
+                "feedback_items": [], "error": str(e)}
 
 async def generate_edit_suggestions(state: PhotoCoachState) -> PhotoCoachState:
     """
@@ -277,19 +230,16 @@ async def recommend_lessons(state: PhotoCoachState) -> PhotoCoachState:
 def build_photo_coach_graph():
     graph = StateGraph(PhotoCoachState)
 
-    graph.add_node("vision_analysis",     run_vision_analysis)
-    graph.add_node("composition_scoring", run_composition_scoring)
-    graph.add_node("edit_suggestions",    generate_edit_suggestions)
-    graph.add_node("embed_feedback",      embed_feedback)
-    graph.add_node("recommend_lessons",   recommend_lessons)
+    graph.add_node("vision_and_scoring", run_vision_and_scoring)
+    graph.add_node("edit_suggestions",   generate_edit_suggestions)
+    graph.add_node("embed_feedback",     embed_feedback)
+    graph.add_node("recommend_lessons",  recommend_lessons)
 
-    # Sequential pipeline — each node feeds into the next
-    graph.set_entry_point("vision_analysis")
-    graph.add_edge("vision_analysis",     "composition_scoring")
-    graph.add_edge("composition_scoring", "edit_suggestions")
-    graph.add_edge("edit_suggestions",    "embed_feedback")
-    graph.add_edge("embed_feedback",      "recommend_lessons")
-    graph.add_edge("recommend_lessons",   END)
+    graph.set_entry_point("vision_and_scoring")
+    graph.add_edge("vision_and_scoring", "edit_suggestions")
+    graph.add_edge("edit_suggestions",   "embed_feedback")
+    graph.add_edge("embed_feedback",     "recommend_lessons")
+    graph.add_edge("recommend_lessons",  END)
 
     return graph.compile()
 

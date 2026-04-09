@@ -13,7 +13,6 @@ azure-core==1.32.0
 
 # Azure OpenAI + AI Services
 openai>=1.58.1
-azure-ai-vision-imageanalysis==1.0.0
 azure-search-documents==11.4.0
 azure-identity==1.19.0
 
