@@ -16,9 +16,6 @@ class Settings(BaseSettings):
     azure_search_key: str
     search_index_name: str = "photography-lessons"
 
-    # ── Monitoring ────────────────────────────────────────────────────────
-    app_insights_connection_string: str = ""
-
     # ── Security ──────────────────────────────────────────────────────────
     allowed_hosts: list[str] = ["*"]
     allowed_origins: list[str] = ["*"]
@@ -50,6 +47,9 @@ class Settings(BaseSettings):
     
     # ── OpenAI ────────────────────────────────────────────────────────────────
     openai_api_key: str = ""
+    
+    # ── Monitoring ────────────────────────────────────────────────────────────
+    sentry_dsn: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

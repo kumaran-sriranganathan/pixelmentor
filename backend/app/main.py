@@ -20,15 +20,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Setup Azure Monitor if connection string is available
-if settings.app_insights_connection_string:
-    try:
-        from azure.monitor.opentelemetry import configure_azure_monitor
-        configure_azure_monitor(
-            connection_string=settings.app_insights_connection_string
-        )
-        logger.info("Azure Monitor configured")
-    except Exception as e:
-        logger.warning(f"Azure Monitor setup failed: {e}")
+if settings.sentry_dsn:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        traces_sample_rate=0.1,
+        environment=settings.environment,
+    )
+    logger.info("Sentry configured")
 
 
 # ── App Lifecycle ─────────────────────────────────────────────────────────────
