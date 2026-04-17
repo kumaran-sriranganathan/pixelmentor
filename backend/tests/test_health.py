@@ -2,18 +2,14 @@
 # tests/test_health.py — PixelMentor backend tests
 ###############################################################################
 
-import asyncio
-import time
 import pytest
 import typesense.exceptions
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from fastapi import HTTPException, status
-from jose import JWTError, ExpiredSignatureError
 
 from app.main import app
 from app.middleware.auth import get_current_user
-import app.middleware.auth as auth_module
 
 # ── Mock identity ──────────────────────────────────────────────────────────────
 
@@ -28,19 +24,6 @@ MOCK_USER = {
 
 async def _mock_get_current_user():
     return MOCK_USER
-
-
-def _make_settings(environment: str):
-    from app.config import get_settings
-    original = get_settings()
-
-    class _Patched:
-        def __getattr__(self, name):
-            if name == "environment":
-                return environment
-            return getattr(original, name)
-
-    return _Patched()
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
@@ -74,16 +57,6 @@ def client():
         with TestClient(app) as c:
             yield c
     app.dependency_overrides.clear()
-
-
-@pytest.fixture(autouse=True)
-def reset_jwks_cache():
-    """Reset JWKS cache state before every test."""
-    auth_module._jwks_cache = None
-    auth_module._jwks_cached_at = 0.0
-    yield
-    auth_module._jwks_cache = None
-    auth_module._jwks_cached_at = 0.0
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────
@@ -157,120 +130,6 @@ class TestAuth:
 
     def test_valid_auth_override_returns_200(self, client):
         assert client.get("/api/v1/lessons").status_code == 200
-
-
-# ── Entra ISSUER regression ────────────────────────────────────────────────────
-
-class TestEntraConfig:
-    def test_issuer_uses_tenant_id_not_tenant_name(self):
-        """Regression: duplicate ISSUER bug used tenant_name as CIAM subdomain."""
-        from app.middleware.auth import ISSUER
-        from app.config import settings
-        wrong_prefix = f"https://{settings.entra_tenant_name}.ciamlogin.com"
-        assert not ISSUER.startswith(wrong_prefix), (
-            f"ISSUER uses tenant_name as subdomain (duplicate-ISSUER bug). Got: {ISSUER}"
-        )
-        assert ISSUER.startswith("https://")
-
-    def test_issuer_and_jwks_same_subdomain(self):
-        from app.middleware.auth import ISSUER, JWKS_URL
-        assert ISSUER.split(".ciamlogin.com")[0] == JWKS_URL.split(".ciamlogin.com")[0]
-
-
-# ── JWKS cache ─────────────────────────────────────────────────────────────────
-
-class TestJWKSCache:
-    def test_cache_populated_on_first_fetch(self):
-        assert auth_module._jwks_cache is None
-        mock_keys = {"keys": [{"kid": "key1"}]}
-
-        async def _run():
-            with patch("httpx.AsyncClient") as mock_client_cls:
-                mock_resp = MagicMock()
-                mock_resp.json.return_value = mock_keys
-                mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
-                    return_value=mock_resp
-                )
-                return await auth_module.get_jwks()
-
-        result = asyncio.run(_run())
-        assert result == mock_keys
-        assert auth_module._jwks_cache == mock_keys
-
-    def test_cache_reused_within_ttl(self):
-        auth_module._jwks_cache = {"keys": [{"kid": "cached"}]}
-        auth_module._jwks_cached_at = time.monotonic()
-
-        async def _run():
-            with patch("httpx.AsyncClient") as mock_client_cls:
-                result = await auth_module.get_jwks()
-                mock_client_cls.assert_not_called()
-                return result
-
-        result = asyncio.run(_run())
-        assert result == {"keys": [{"kid": "cached"}]}
-
-    def test_cache_refreshed_after_ttl(self):
-        auth_module._jwks_cache = {"keys": [{"kid": "stale"}]}
-        auth_module._jwks_cached_at = time.monotonic() - auth_module.JWKS_CACHE_TTL_SECONDS - 1
-
-        fresh_keys = {"keys": [{"kid": "fresh"}]}
-
-        async def _run():
-            with patch("httpx.AsyncClient") as mock_client_cls:
-                mock_resp = MagicMock()
-                mock_resp.json.return_value = fresh_keys
-                mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
-                    return_value=mock_resp
-                )
-                return await auth_module.get_jwks()
-
-        result = asyncio.run(_run())
-        assert result == fresh_keys
-
-    def test_cache_cleared_on_expired_token(self):
-        """ExpiredSignatureError must clear the cache."""
-        auth_module._jwks_cache = {"keys": [{"kid": "stale"}]}
-        auth_module._jwks_cached_at = time.monotonic()
-
-        mock_request = MagicMock()
-        mock_request.headers = {"Authorization": "Bearer any.token.here"}
-
-        async def _run():
-            with patch.object(auth_module, "settings", _make_settings("prod")):
-                with patch.object(auth_module, "get_jwks",
-                                  new=AsyncMock(return_value={"keys": []})):
-                    with patch.object(auth_module.jwt, "decode",
-                                      side_effect=ExpiredSignatureError("expired")):
-                        try:
-                            await auth_module.get_current_user(mock_request)
-                        except Exception:
-                            pass
-
-        asyncio.run(_run())
-        assert auth_module._jwks_cache is None
-
-    def test_cache_cleared_on_jwt_error(self):
-        """JWTError must also clear the cache (handles emergency key rotation)."""
-        auth_module._jwks_cache = {"keys": [{"kid": "stale"}]}
-        auth_module._jwks_cached_at = time.monotonic()
-
-        mock_request = MagicMock()
-        mock_request.headers = {"Authorization": "Bearer any.token.here"}
-
-        async def _run():
-            with patch.object(auth_module, "settings", _make_settings("prod")):
-                with patch.object(auth_module, "get_jwks",
-                                  new=AsyncMock(return_value={"keys": []})):
-                    with patch.object(auth_module.jwt, "decode",
-                                      side_effect=JWTError("bad sig")):
-                        try:
-                            await auth_module.get_current_user(mock_request)
-                        except Exception:
-                            pass
-
-        asyncio.run(_run())
-        assert auth_module._jwks_cache is None
 
 
 # ── Lessons ────────────────────────────────────────────────────────────────────

@@ -7,9 +7,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # ── Auth ──────────────────────────────────────────────────────────────
-    entra_tenant_id: str = ""
-    entra_api_client_id: str = ""
-    entra_tenant_name: str = "pixelmentor"
 
     # ── Azure AI Search (legacy — being replaced by Typesense) ────────────
     azure_search_endpoint: str = ""
