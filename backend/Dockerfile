@@ -34,6 +34,7 @@ RUN groupadd --gid 1001 appgroup \
     && useradd --uid 1001 --gid appgroup --shell /bin/bash --create-home appuser
 
 WORKDIR /app
+# Force rebuild - cache bust
 
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
