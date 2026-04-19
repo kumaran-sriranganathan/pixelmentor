@@ -12,13 +12,15 @@ import retrofit2.http.Query
 
 interface PixelMentorApiService {
 
-    @GET("api/v1/lessons/")
+    @GET("api/v1/lessons")
     suspend fun getLessons(
-        @Query("skill_level") skillLevel: String? = null,
-    ): List<LessonDto>
+        @Query("difficulty") difficulty: String? = null,
+        @Query("category") category: String? = null,
+        @Query("q") q: String? = null,
+    ): LessonsResponseDto
 
     @GET("api/v1/lessons/{id}")
-    suspend fun getLesson(@Path("id") id: String): LessonDto
+    suspend fun getLesson(@Path("id") id: String): LessonDetailDto
 
     @GET("api/v1/users/{userId}")
     suspend fun getUser(@Path("userId") userId: String): UserProfileDto
@@ -26,21 +28,53 @@ interface PixelMentorApiService {
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
+data class LessonsResponseDto(
+    val lessons: List<LessonDto>,
+    val total_count: Int,
+    val page: Int,
+    val page_size: Int,
+)
+
 data class LessonDto(
     val id: String,
     val title: String,
     val description: String,
+    val category: String,
+    val difficulty: String,
     val duration_minutes: Int,
-    val skill_level: String,
-    val thumbnail_url: String = "",
+    val is_pro: Boolean,
+    val order: Int,
+    val tags: List<String>,
 ) {
     fun toDomain() = Lesson(
         id = id,
         title = title,
         description = description,
         durationMinutes = duration_minutes,
-        skillLevel = SkillLevel.from(skill_level),
-        thumbnailUrl = thumbnail_url,
+        skillLevel = SkillLevel.from(difficulty),
+        thumbnailUrl = "",
+    )
+}
+
+data class LessonDetailDto(
+    val id: String,
+    val title: String,
+    val description: String,
+    val category: String,
+    val difficulty: String,
+    val duration_minutes: Int,
+    val is_pro: Boolean,
+    val order: Int,
+    val tags: List<String>,
+    val content: String,
+) {
+    fun toDomain() = Lesson(
+        id = id,
+        title = title,
+        description = description,
+        durationMinutes = duration_minutes,
+        skillLevel = SkillLevel.from(difficulty),
+        thumbnailUrl = "",
     )
 }
 

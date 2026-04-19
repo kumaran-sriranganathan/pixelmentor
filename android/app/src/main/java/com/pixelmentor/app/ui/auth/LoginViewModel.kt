@@ -1,6 +1,5 @@
 package com.pixelmentor.app.ui.auth
 
-import android.app.Activity
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -32,15 +31,41 @@ class LoginViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
     val uiState: StateFlow<LoginUiState> = _uiState
 
-    fun signIn(activity: Activity) {
+    fun signInWithEmail(email: String, password: String) {
         viewModelScope.launch {
             _uiState.update { LoginUiState.SigningIn }
             try {
-                authRepository.signIn(activity)
+                authRepository.signInWithEmail(email, password)
                 _uiState.update { LoginUiState.Idle }
             } catch (e: Exception) {
-                Log.e("LoginViewModel", "Sign in failed: ${e.javaClass.simpleName}: ${e.message}")
+                Log.e("LoginViewModel", "Sign in failed: ${e.message}")
                 _uiState.update { LoginUiState.Error(e.message ?: "Sign in failed") }
+            }
+        }
+    }
+
+    fun signInWithGoogle() {
+        viewModelScope.launch {
+            _uiState.update { LoginUiState.SigningIn }
+            try {
+                authRepository.signInWithGoogle()
+                _uiState.update { LoginUiState.Idle }
+            } catch (e: Exception) {
+                Log.e("LoginViewModel", "Google sign in failed: ${e.message}")
+                _uiState.update { LoginUiState.Error(e.message ?: "Google sign in failed") }
+            }
+        }
+    }
+
+    fun signUp(email: String, password: String) {
+        viewModelScope.launch {
+            _uiState.update { LoginUiState.SigningIn }
+            try {
+                authRepository.signUp(email, password)
+                _uiState.update { LoginUiState.Idle }
+            } catch (e: Exception) {
+                Log.e("LoginViewModel", "Sign up failed: ${e.message}")
+                _uiState.update { LoginUiState.Error(e.message ?: "Sign up failed") }
             }
         }
     }

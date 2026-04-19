@@ -3,7 +3,6 @@ package com.pixelmentor.app
 import android.app.Application
 import android.util.Log
 import com.pixelmentor.app.data.auth.AuthRepository
-import com.pixelmentor.app.data.auth.MsalAuthManager
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,9 +14,6 @@ import javax.inject.Inject
 class PixelMentorApp : Application() {
 
     @Inject
-    lateinit var msalAuthManager: MsalAuthManager
-
-    @Inject
     lateinit var authRepository: AuthRepository
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -26,12 +22,9 @@ class PixelMentorApp : Application() {
         super.onCreate()
         appScope.launch {
             try {
-                // Must initialise MSAL before restoring session
-                msalAuthManager.initialize()
                 authRepository.restoreSession()
             } catch (e: Exception) {
-                Log.e("PixelMentorApp", "Failed to initialise MSAL: ${e.message}")
-                // App continues — user will be prompted to sign in
+                Log.e("PixelMentorApp", "Failed to restore session: ${e.message}")
             }
         }
     }

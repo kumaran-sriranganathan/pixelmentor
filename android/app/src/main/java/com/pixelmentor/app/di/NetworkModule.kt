@@ -37,6 +37,8 @@ object NetworkModule {
         tokenRefreshInterceptor: TokenRefreshInterceptor,
     ): OkHttpClient {
         return OkHttpClient.Builder()
+            .followSslRedirects(true)
+            .followRedirects(false)
             // Auth interceptor runs first — attaches token
             .addInterceptor(authInterceptor)
             // Refresh interceptor runs after response — handles token_expired

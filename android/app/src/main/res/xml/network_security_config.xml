@@ -3,6 +3,8 @@
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">pm-dev-api.happymushroom-b6080bcd.australiaeast.azurecontainerapps.io</domain>
         <domain includeSubdomains="true">pm-prod-api.happyfield-58cc0921.australiaeast.azurecontainerapps.io</domain>
+        <domain includeSubdomains="true">pixelmentor-production.up.railway.app</domain>
+        <domain includeSubdomains="true">supabase.co</domain>
     </domain-config>
     <base-config cleartextTrafficPermitted="false" />
 </network-security-config>

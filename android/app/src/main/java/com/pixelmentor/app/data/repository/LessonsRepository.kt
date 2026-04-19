@@ -16,7 +16,7 @@ class LessonsRepository @Inject constructor(
 ) {
     suspend fun getLessons(skillLevel: SkillLevel? = null): Result<List<Lesson>> {
         return safeApiCall {
-            api.getLessons(skillLevel?.value).map { it.toDomain() }
+            api.getLessons(difficulty = skillLevel?.value).lessons.map { it.toDomain() }
         }
     }
 
@@ -34,12 +34,7 @@ suspend fun <T> safeApiCall(call: suspend () -> T): Result<T> {
         Result.Success(call())
     } catch (e: HttpException) {
         val exception = when (e.code()) {
-            401 -> {
-                // TokenRefreshInterceptor already attempted a silent refresh.
-                // If we still get 401 here, the token is invalid or the user
-                // must re-login — surface as Unauthorized.
-                AppException.Unauthorized()
-            }
+            401 -> AppException.Unauthorized()
             in 500..599 -> AppException.ServerError(e.code(), e.message())
             else -> AppException.Unknown(e.message())
         }

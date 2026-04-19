@@ -24,22 +24,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- MSAL redirect activity — required for auth flow -->
-        <activity
-            android:name="com.microsoft.identity.client.BrowserTabActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:host="com.pixelmentor.app"
-                    android:path="/callback"
-                    android:scheme="msauth" />
-            </intent-filter>
-        </activity>
-
     </application>
 
 </manifest>
