@@ -2,9 +2,13 @@ package com.pixelmentor.app.data.api
 
 import com.pixelmentor.app.domain.model.Lesson
 import com.pixelmentor.app.domain.model.Plan
+import com.pixelmentor.app.domain.model.PhotoAnalysisRequest
+import com.pixelmentor.app.domain.model.PhotoAnalysisResponse
 import com.pixelmentor.app.domain.model.SkillLevel
 import com.pixelmentor.app.domain.model.UserProfile
+import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -24,6 +28,11 @@ interface PixelMentorApiService {
 
     @GET("api/v1/users/{userId}")
     suspend fun getUser(@Path("userId") userId: String): UserProfileDto
+
+    @POST("api/v1/analyze/photo")
+    suspend fun analyzePhoto(
+        @Body request: PhotoAnalysisRequest
+    ): PhotoAnalysisResponse
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────

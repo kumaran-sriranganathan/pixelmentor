@@ -231,13 +231,13 @@ def build_photo_coach_graph():
     graph = StateGraph(PhotoCoachState)
 
     graph.add_node("vision_and_scoring", run_vision_and_scoring)
-    graph.add_node("edit_suggestions",   generate_edit_suggestions)
+    graph.add_node("generate_edits",   generate_edit_suggestions)
     graph.add_node("embed_feedback",     embed_feedback)
     graph.add_node("recommend_lessons",  recommend_lessons)
 
     graph.set_entry_point("vision_and_scoring")
-    graph.add_edge("vision_and_scoring", "edit_suggestions")
-    graph.add_edge("edit_suggestions",   "embed_feedback")
+    graph.add_edge("vision_and_scoring", "generate_edits")
+    graph.add_edge("generate_edits",     "embed_feedback")
     graph.add_edge("embed_feedback",     "recommend_lessons")
     graph.add_edge("recommend_lessons",  END)
 

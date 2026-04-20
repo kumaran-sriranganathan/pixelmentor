@@ -64,6 +64,9 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.icons.extended)
+    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("com.google.accompanist:accompanist-permissions:0.34.0")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     debugImplementation(libs.compose.ui.tooling)
 
     // Activity + Navigation

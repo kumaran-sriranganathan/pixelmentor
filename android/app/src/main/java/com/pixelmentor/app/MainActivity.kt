@@ -11,6 +11,8 @@ import androidx.navigation.compose.rememberNavController
 import com.pixelmentor.app.ui.auth.LoginScreen
 import com.pixelmentor.app.ui.lessons.LessonsScreen
 import com.pixelmentor.app.ui.theme.PixelMentorTheme
+import com.pixelmentor.app.ui.navigation.analysisGraph
+import com.pixelmentor.app.ui.navigation.AnalysisRoutes
 import dagger.hilt.android.AndroidEntryPoint
 
 // ── Navigation routes ─────────────────────────────────────────────────────────
@@ -41,13 +43,12 @@ private fun PixelMentorNavHost() {
 
     NavHost(
         navController = navController,
-        startDestination = Routes.LOGIN,
+        startDestination = Routes.LOGIN
     ) {
         composable(Routes.LOGIN) {
             LoginScreen(
                 onAuthenticated = {
                     navController.navigate(Routes.LESSONS) {
-                        // Clear back stack so back button doesn't return to login
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 }
@@ -60,8 +61,13 @@ private fun PixelMentorNavHost() {
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(Routes.LESSONS) { inclusive = true }
                     }
+                },
+                onAnalyzePhoto = {
+                    navController.navigate(AnalysisRoutes.PICKER)
                 }
             )
         }
+
+        analysisGraph(navController)
     }
 }

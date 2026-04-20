@@ -1,16 +1,24 @@
 package com.pixelmentor.app.ui.lessons
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pixelmentor.app.domain.model.Lesson
@@ -20,11 +28,11 @@ import com.pixelmentor.app.domain.model.SkillLevel
 @Composable
 fun LessonsScreen(
     onSignOut: () -> Unit,
+    onAnalyzePhoto: () -> Unit,
     viewModel: LessonsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Redirect to login if unauthorized (token_invalid or refresh token expired)
     LaunchedEffect(uiState) {
         if (uiState is LessonsUiState.Unauthorized) {
             onSignOut()
@@ -36,7 +44,7 @@ fun LessonsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Lessons",
+                        text = "PixelMentor",
                         fontWeight = FontWeight.Bold,
                     )
                 },
@@ -58,9 +66,30 @@ fun LessonsScreen(
 
                 is LessonsUiState.Success -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 16.dp,
+                            bottom = 24.dp
+                        ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        // ── Analyze Photo banner ──────────────────────────────
+                        item {
+                            AnalyzePhotoBanner(onClick = onAnalyzePhoto)
+                        }
+
+                        // ── Section header ────────────────────────────────────
+                        item {
+                            Text(
+                                text = "Lessons",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                            )
+                        }
+
+                        // ── Lesson cards ──────────────────────────────────────
                         items(state.lessons, key = { it.id }) { lesson ->
                             LessonCard(lesson = lesson)
                         }
@@ -87,13 +116,119 @@ fun LessonsScreen(
                 }
 
                 is LessonsUiState.Unauthorized -> {
-                    // Handled by LaunchedEffect above
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
             }
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Analyze Photo banner
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun AnalyzePhotoBanner(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.tertiary,
+                        )
+                    )
+                )
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "AI PHOTO COACH",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Get instant feedback\non your photos",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        lineHeight = 28.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White.copy(alpha = 0.2f))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CameraAlt,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Analyze a Photo",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                // Large camera icon on the right
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.CameraAlt,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(44.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lesson card
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun LessonCard(lesson: Lesson) {
@@ -133,6 +268,10 @@ private fun LessonCard(lesson: Lesson) {
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skill level chip
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SkillLevelChip(skillLevel: SkillLevel) {
