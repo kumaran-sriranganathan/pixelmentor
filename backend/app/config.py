@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     
     # ── Monitoring ────────────────────────────────────────────────────────────
     sentry_dsn: str = ""
+    
+    lessons_index: str = "lessons"
+    
+    cloudflare_account_id: str
+    r2_access_key_id: str
+    r2_secret_access_key: str
+    r2_bucket_name: str = "pixelmentor-photos"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
