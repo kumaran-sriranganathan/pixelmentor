@@ -10,6 +10,9 @@ from app.config import settings
 def get_supabase() -> Client:
     return create_client(settings.supabase_url, settings.supabase_service_key)
 
+# Alias used by analyze.py
+def get_supabase_client() -> Client:
+    return get_supabase()
 
 class SupabaseService:
     def __init__(self):
@@ -21,7 +24,7 @@ class SupabaseService:
             "id": analysis_id,
             "user_id": user_id,
             "blob_url": blob_url,
-            "composition_score": result.composition_score,
+            "composition_score": int(result.composition_score),
             "vision_tags": result.vision_tags,
         }).execute()
         self.db.rpc("increment_photos_analyzed", {"p_user_id": user_id}).execute()
