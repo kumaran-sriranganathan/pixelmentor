@@ -150,17 +150,17 @@ Return ONLY valid JSON."""
             messages=[
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": state["image_url"]}},
-                        {"type": "text", "text": prompt},
-                    ],
+                    "content": prompt,  # text only — no image needed
                 }
             ],
             response_format={"type": "json_object"},
             max_tokens=500,
             temperature=0.2,
         )
-        edits = json.loads(response.choices[0].message.content)
+        content = response.choices[0].message.content
+        if not content:
+            return {**state, "edit_suggestions": {}, "error": "Empty response from GPT-4o"}
+        edits = json.loads(content)
         return {**state, "edit_suggestions": edits}
     except Exception as e:
         logger.error(f"[{state['analysis_id']}] Edit suggestion failed: {e}")
