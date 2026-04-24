@@ -33,6 +33,11 @@ interface PixelMentorApiService {
     suspend fun analyzePhoto(
         @Body request: PhotoAnalysisRequest
     ): PhotoAnalysisResponse
+
+    @POST("api/v1/tutor/quiz")
+    suspend fun generateQuiz(
+        @Body request: QuizRequest
+    ): QuizResponse
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
