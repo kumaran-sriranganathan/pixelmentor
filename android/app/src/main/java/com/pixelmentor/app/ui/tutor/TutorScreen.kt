@@ -432,6 +432,7 @@ private fun QuizTab(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun QuizSetup(
     selectedTopic: String,
