@@ -81,7 +81,6 @@ async def tutor_chat(
     request: ChatRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Send a message to the AI tutor. Returns a streaming SSE response."""
     service = SupabaseService()
     user_id = current_user["sub"]
 
@@ -94,8 +93,31 @@ async def tutor_chat(
 
     history = await service.get_chat_history(user_id, limit=10)
 
+    async def stream_and_save():
+        full_response = []
+        async for chunk in stream_tutor_response(history, skill_profile):
+            yield chunk
+            # Collect non-SSE content chunks
+            if chunk.startswith("data: ") and chunk.strip() != "data: [DONE]":
+                try:
+                    data = json.loads(chunk.removeprefix("data: ").strip())
+                    if "content" in data:
+                        full_response.append(data["content"])
+                except Exception:
+                    pass
+
+        # Save assistant response to history after streaming completes
+        if full_response:
+            try:
+                await service.append_chat_message(user_id, {
+                    "role": "assistant",
+                    "content": "".join(full_response),
+                })
+            except Exception as e:
+                logger.error(f"Failed to save assistant message: {e}")
+
     return StreamingResponse(
-        stream_tutor_response(history, skill_profile),
+        stream_and_save(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
