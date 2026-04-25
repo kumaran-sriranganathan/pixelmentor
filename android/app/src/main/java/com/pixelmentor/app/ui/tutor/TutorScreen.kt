@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.AutoMirrored
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -117,7 +118,7 @@ private fun TutorTabBar(activeTab: TutorTab, onTabSelected: (TutorTab) -> Unit) 
                 ) {
                     Icon(
                         imageVector = if (tab == TutorTab.CHAT)
-                            Icons.Outlined.Chat else Icons.Outlined.Quiz,
+                            Icons.AutoMirrored.Outlined.Chat else Icons.Outlined.Quiz,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
                         tint = if (selected) MaterialTheme.colorScheme.primary
@@ -382,7 +383,7 @@ private fun ChatInputBar(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
-                    Icon(Icons.Outlined.Send, contentDescription = "Send")
+                    Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = "Send")
                 }
             }
         }
@@ -715,7 +716,7 @@ private fun QuizQuestion(
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.width(8.dp))
-                Icon(Icons.Outlined.ArrowForward, null)
+                Icon(Icons.AutoMirrored.Outlined.ArrowForward, null)
             }
         }
     }

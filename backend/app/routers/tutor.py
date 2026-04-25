@@ -4,15 +4,16 @@
 
 import json
 import logging
+import uuid
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from app.config import settings
-from app.models.analysis import ChatRequest, ChatResponse
-from app.utils.supabase_client import SupabaseService as CosmosService
+from app.utils.supabase_client import SupabaseService
 from app.middleware.auth import get_current_user
 
 router = APIRouter()
@@ -25,29 +26,36 @@ Your teaching philosophy:
 - Use concrete, visual examples they can try immediately
 - Reference real camera settings (f-stop, ISO, shutter speed)
 - End every response with one actionable "Try this now" challenge
-- In quiz mode: ask ONE focused question, then evaluate their answer
 
 Student profile: {skill_profile}
 
 Keep responses concise and encouraging."""
 
 
+# ── Request models ────────────────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    message: str
+    topic: str | None = None
+
+
+class QuizRequest(BaseModel):
+    topic: str
+    difficulty: str = "intermediate"
+    num_questions: int = 5
+
+
+# ── Streaming helper ──────────────────────────────────────────────────────────
+
 async def stream_tutor_response(
     messages: list,
     skill_profile: dict,
 ) -> AsyncGenerator[str, None]:
     """Stream GPT-4o tutor response as Server-Sent Events."""
-    if not settings.azure_openai_endpoint:
-        yield f"data: {json.dumps({'content': 'AI tutor not configured yet.'})}\n\n"
-        yield "data: [DONE]\n\n"
-        return
-
     client = AsyncOpenAI(api_key=settings.openai_api_key)
-
     system = TUTOR_SYSTEM_PROMPT.format(skill_profile=json.dumps(skill_profile))
 
     try:
-        # Use stream=True with create() for async streaming
         stream = await client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "system", "content": system}] + messages,
@@ -66,23 +74,25 @@ async def stream_tutor_response(
         yield "data: [DONE]\n\n"
 
 
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
 @router.post("/chat")
 async def tutor_chat(
     request: ChatRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Send a message to the AI tutor. Returns a streaming SSE response."""
-    cosmos = CosmosService()
+    service = SupabaseService()
     user_id = current_user["sub"]
 
-    skill_profile = await cosmos.get_skill_profile(user_id)
+    skill_profile = await service.get_skill_profile(user_id)
 
-    await cosmos.append_chat_message(user_id, {
+    await service.append_chat_message(user_id, {
         "role": "user",
         "content": request.message,
     })
 
-    history = await cosmos.get_chat_history(user_id, limit=10)
+    history = await service.get_chat_history(user_id, limit=10)
 
     return StreamingResponse(
         stream_tutor_response(history, skill_profile),
@@ -96,32 +106,47 @@ async def tutor_chat(
 
 @router.post("/quiz")
 async def generate_quiz(
-    topic: str,
+    request: QuizRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Generate a quiz question on a specific photography topic."""
-    if not settings.azure_openai_endpoint:
-        return {"error": "AI not configured"}
-
+    """Generate a multiple-choice photography quiz."""
     client = AsyncOpenAI(api_key=settings.openai_api_key)
-    cosmos = CosmosService()
-    skill_profile = await cosmos.get_skill_profile(current_user["sub"])
+    service = SupabaseService()
+    skill_profile = await service.get_skill_profile(current_user["sub"])
 
     response = await client.chat.completions.create(
         model="gpt-4o",
         messages=[{
             "role": "user",
-            "content": f"""Generate a multiple-choice photography quiz question about: {topic}
+            "content": f"""Generate a photography quiz about: {request.topic}
+Difficulty: {request.difficulty}
+Number of questions: {request.num_questions}
 Skill level: {skill_profile.get('level', 'intermediate')}
-Return JSON: {{
-  "question": "...",
-  "options": {{"A": "...", "B": "...", "C": "...", "D": "..."}},
-  "correct_answer": "A|B|C|D",
-  "explanation": "..."
-}}"""
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "questions": [
+    {{
+      "id": "q1",
+      "question": "...",
+      "options": ["option A", "option B", "option C", "option D"],
+      "correct_index": 0,
+      "explanation": "..."
+    }}
+  ]
+}}
+
+correct_index is 0-based (0=A, 1=B, 2=C, 3=D).
+Return ONLY JSON, no other text."""
         }],
         response_format={"type": "json_object"},
-        max_tokens=400,
+        max_tokens=1500,
     )
 
-    return json.loads(response.choices[0].message.content)
+    data = json.loads(response.choices[0].message.content)
+
+    return {
+        "quiz_id": str(uuid.uuid4()),
+        "topic": request.topic,
+        "questions": data.get("questions", [])
+    }
