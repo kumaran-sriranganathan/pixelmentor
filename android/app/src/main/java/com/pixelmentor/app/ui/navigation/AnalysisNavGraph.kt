@@ -11,6 +11,8 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.compose.runtime.remember
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import com.pixelmentor.app.Routes
 import com.pixelmentor.app.ui.analyze.AnalysisResultsScreen
 import com.pixelmentor.app.ui.analyze.PhotoAnalysisScreen
 import com.pixelmentor.app.ui.analyze.PhotoAnalysisViewModel
@@ -58,8 +60,14 @@ fun NavGraphBuilder.analysisGraph(navController: NavController) {
                 navController.popBackStack(AnalysisRoutes.PICKER, inclusive = true)
                 navController.navigate(AnalysisRoutes.PICKER)
             },
-            onLessonClick = { lessonId ->
-                navController.navigate("lessons/$lessonId")
+            onLessonClick = { _ ->
+                navController.navigate(Routes.LESSONS) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
             },
             viewModel = viewModel
         )
