@@ -1,6 +1,5 @@
 ###############################################################################
 # middleware/auth.py — Supabase JWT validation
-# Replaces Microsoft Entra External ID
 ###############################################################################
 
 import logging
@@ -22,15 +21,6 @@ async def get_current_user(request: Request) -> dict:
       token_expired  → valid token, past exp
       token_invalid  → bad signature / malformed
     """
-    if settings.environment == "dev":
-        return {
-            "sub": "dev-user-123",
-            "email": "dev@pixelmentor.com",
-            "name": "Dev User",
-            "given_name": "Dev",
-            "family_name": "User",
-        }
-
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(
