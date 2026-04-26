@@ -226,7 +226,7 @@ private fun StatsRow(profile: UserProfile) {
             modifier = Modifier.weight(1f),
             value = "${profile.streakDays}d",
             label = "Current\nStreak",
-            icon = Icons.Outlined.LocalFire,
+            icon = Icons.Outlined.Whatshot,
             color = Color(0xFFF59E0B)
         )
     }
