@@ -14,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import com.pixelmentor.app.ui.auth.LoginScreen
 import com.pixelmentor.app.ui.lessons.LessonsScreen
 import com.pixelmentor.app.ui.tutor.TutorScreen
+import com.pixelmentor.app.ui.profile.ProfileScreen
 import com.pixelmentor.app.ui.theme.PixelMentorTheme
 import com.pixelmentor.app.ui.navigation.AnalysisRoutes
 import com.pixelmentor.app.ui.navigation.PixelMentorBottomBar
@@ -26,6 +27,7 @@ object Routes {
     const val LOGIN = "login"
     const val LESSONS = "lessons"
     const val TUTOR = "tutor"
+    const val PROFILE = "profile"
 }
 
 // ── MainActivity ──────────────────────────────────────────────────────────────
@@ -82,6 +84,16 @@ private fun PixelMentorNavHost() {
 
             composable(Routes.TUTOR) {
                 TutorScreen()
+            }
+
+            composable(Routes.PROFILE) {
+                ProfileScreen(
+                    onSignOut = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                )
             }
 
             analysisGraph(navController)

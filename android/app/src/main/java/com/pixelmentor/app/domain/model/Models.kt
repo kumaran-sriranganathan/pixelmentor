@@ -48,10 +48,10 @@ data class UserProfile(
     val plan: Plan,
 )
 
-enum class Plan(val value: String) {
-    FREE("free"),
-    PRO("pro"),
-    PREMIUM("premium");
+enum class Plan(val value: String, val label: String, val emoji: String) {
+    FREE("free", "Free", ""),
+    PRO("pro", "Pro", "⚡"),
+    PREMIUM("premium", "Premium", "👑");
 
     companion object {
         fun from(value: String) = entries.firstOrNull { it.value == value } ?: FREE
@@ -72,4 +72,12 @@ sealed class AppException(message: String) : Exception(message) {
     data class NetworkError(override val message: String) : AppException(message)
     data class ServerError(val code: Int, override val message: String) : AppException(message)
     data class Unknown(override val message: String = "Unknown error") : AppException(message)
+}
+
+// ── Profile UI State ──────────────────────────────────────────────────────────
+
+sealed class ProfileUiState {
+    object Loading : ProfileUiState()
+    data class Success(val profile: UserProfile) : ProfileUiState()
+    data class Error(val message: String) : ProfileUiState()
 }

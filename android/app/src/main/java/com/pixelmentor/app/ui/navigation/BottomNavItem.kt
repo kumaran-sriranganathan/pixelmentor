@@ -3,6 +3,7 @@ package com.pixelmentor.app.ui.navigation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -26,10 +27,16 @@ sealed class BottomNavItem(
         label = "Tutor",
         icon = Icons.Outlined.SmartToy
     )
+    object Profile : BottomNavItem(
+        route = "profile",
+        label = "Profile",
+        icon = Icons.Outlined.Person
+    )
 }
 
 val bottomNavItems = listOf(
     BottomNavItem.Lessons,
     BottomNavItem.Analyze,
     BottomNavItem.Tutor,
+    BottomNavItem.Profile,
 )
