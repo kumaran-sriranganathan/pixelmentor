@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pixelmentor.app.data.repository.LessonsRepository
 import com.pixelmentor.app.domain.model.AppException
+import com.pixelmentor.app.domain.model.LessonDetail
 import com.pixelmentor.app.domain.model.LessonDetailUiState
 import com.pixelmentor.app.domain.model.Result
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,6 +26,13 @@ class LessonDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<LessonDetailUiState>(LessonDetailUiState.Loading)
     val uiState: StateFlow<LessonDetailUiState> = _uiState.asStateFlow()
 
+    // Tracks whether expanded AI content has been loaded
+    private val _expandedContent = MutableStateFlow<String?>(null)
+    val expandedContent: StateFlow<String?> = _expandedContent.asStateFlow()
+
+    private val _isLoadingContent = MutableStateFlow(false)
+    val isLoadingContent: StateFlow<Boolean> = _isLoadingContent.asStateFlow()
+
     init {
         loadLesson()
     }
@@ -35,12 +43,12 @@ class LessonDetailViewModel @Inject constructor(
             when (val result = repository.getLesson(lessonId)) {
                 is Result.Success -> {
                     val lesson = result.data
-                    // Pro gate — show locked state for pro lessons
-                    // (billing not yet implemented, so all free tier users see ProRequired)
                     if (lesson.isPro) {
                         _uiState.value = LessonDetailUiState.ProRequired
                     } else {
                         _uiState.value = LessonDetailUiState.Success(lesson)
+                        // Auto-load expanded content after lesson metadata loads
+                        loadExpandedContent(lesson)
                     }
                 }
                 is Result.Error -> {
@@ -49,6 +57,22 @@ class LessonDetailViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    private fun loadExpandedContent(lesson: LessonDetail) {
+        viewModelScope.launch {
+            _isLoadingContent.value = true
+            repository.getLessonContent(lessonId).fold(
+                onSuccess = { content ->
+                    _expandedContent.value = content
+                },
+                onFailure = {
+                    // Fall back to original content — not a fatal error
+                    _expandedContent.value = lesson.content
+                }
+            )
+            _isLoadingContent.value = false
         }
     }
 }

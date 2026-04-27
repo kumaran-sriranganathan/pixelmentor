@@ -1,5 +1,6 @@
 package com.pixelmentor.app.ui.lessons
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -30,6 +31,8 @@ fun LessonDetailScreen(
     viewModel: LessonDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val expandedContent by viewModel.expandedContent.collectAsState()
+    val isLoadingContent by viewModel.isLoadingContent.collectAsState()
 
     Scaffold(
         topBar = {
@@ -39,6 +42,7 @@ fun LessonDetailScreen(
                         text = when (uiState) {
                             is LessonDetailUiState.Success ->
                                 (uiState as LessonDetailUiState.Success).lesson.category
+                                    .replaceFirstChar { it.uppercase() }
                             else -> "Lesson"
                         },
                         style = MaterialTheme.typography.titleMedium
@@ -101,6 +105,8 @@ fun LessonDetailScreen(
             is LessonDetailUiState.Success -> {
                 LessonContent(
                     lesson = state.lesson,
+                    expandedContent = expandedContent,
+                    isLoadingContent = isLoadingContent,
                     modifier = Modifier.padding(padding)
                 )
             }
@@ -115,6 +121,8 @@ fun LessonDetailScreen(
 @Composable
 private fun LessonContent(
     lesson: LessonDetail,
+    expandedContent: String?,
+    isLoadingContent: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -149,13 +157,130 @@ private fun LessonContent(
 
             HorizontalDivider()
 
-            // Content — render as formatted text
-            LessonContentBody(content = lesson.content)
+            // AI content loading state
+            when {
+                isLoadingContent -> {
+                    ContentLoadingPlaceholder(durationMinutes = lesson.durationMinutes)
+                }
+                expandedContent != null -> {
+                    // AI badge
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.AutoAwesome,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            "AI-generated lesson content",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    LessonContentBody(content = expandedContent)
+                }
+                else -> {
+                    // Fallback to original short content
+                    LessonContentBody(content = lesson.content)
+                }
+            }
 
             Spacer(Modifier.height(32.dp))
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Content loading placeholder with shimmer
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ContentLoadingPlaceholder(durationMinutes: Int) {
+    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                Icons.Outlined.AutoAwesome,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                "Generating $durationMinutes-minute lesson…",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        // Shimmer lines
+        repeat(8) { index ->
+            val width = when (index % 3) {
+                0 -> 1f
+                1 -> 0.85f
+                else -> 0.7f
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(width)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha)
+                    )
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Section header shimmer
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.5f)
+                .height(18.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = alpha)
+                )
+        )
+
+        repeat(5) { index ->
+            val width = when (index % 3) {
+                0 -> 1f
+                1 -> 0.9f
+                else -> 0.75f
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(width)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha)
+                    )
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero header
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun LessonHero(lesson: LessonDetail) {
@@ -173,7 +298,6 @@ private fun LessonHero(lesson: LessonDetail) {
             .padding(24.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // Skill level + duration row
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -208,7 +332,6 @@ private fun LessonHero(lesson: LessonDetail) {
                 )
             }
 
-            // Title
             Text(
                 text = lesson.title,
                 style = MaterialTheme.typography.headlineSmall,
@@ -216,7 +339,6 @@ private fun LessonHero(lesson: LessonDetail) {
                 lineHeight = 32.sp
             )
 
-            // Description
             Text(
                 text = lesson.description,
                 style = MaterialTheme.typography.bodyMedium,
@@ -226,9 +348,12 @@ private fun LessonHero(lesson: LessonDetail) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Content body renderer
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun LessonContentBody(content: String) {
-    // Split content into sections by double newline or markdown-style headers
     val paragraphs = content
         .split("\n\n")
         .map { it.trim() }
@@ -237,7 +362,6 @@ private fun LessonContentBody(content: String) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         paragraphs.forEach { paragraph ->
             when {
-                // Markdown H2 header
                 paragraph.startsWith("## ") -> {
                     Text(
                         text = paragraph.removePrefix("## "),
@@ -246,7 +370,6 @@ private fun LessonContentBody(content: String) {
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                // Markdown H3 header
                 paragraph.startsWith("### ") -> {
                     Text(
                         text = paragraph.removePrefix("### "),
@@ -254,25 +377,32 @@ private fun LessonContentBody(content: String) {
                         fontWeight = FontWeight.SemiBold
                     )
                 }
-                // Bullet list item
-                paragraph.startsWith("- ") || paragraph.startsWith("* ") -> {
+                paragraph.lines().any { it.startsWith("- ") || it.startsWith("* ") } -> {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         paragraph.lines()
-                            .filter { it.startsWith("- ") || it.startsWith("* ") }
+                            .filter { it.isNotBlank() }
                             .forEach { line ->
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(top = 7.dp)
-                                            .size(6.dp)
-                                            .clip(androidx.compose.foundation.shape.CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary)
-                                    )
+                                if (line.startsWith("- ") || line.startsWith("* ")) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(top = 7.dp)
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary)
+                                        )
+                                        Text(
+                                            text = line.removePrefix("- ").removePrefix("* "),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                } else {
                                     Text(
-                                        text = line.removePrefix("- ").removePrefix("* "),
+                                        text = line,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
@@ -280,8 +410,7 @@ private fun LessonContentBody(content: String) {
                             }
                     }
                 }
-                // Tip/callout box
-                paragraph.startsWith("💡") || paragraph.startsWith("**Tip") -> {
+                paragraph.startsWith("💡") -> {
                     Card(
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
@@ -306,7 +435,6 @@ private fun LessonContentBody(content: String) {
                         }
                     }
                 }
-                // Regular paragraph
                 else -> {
                     Text(
                         text = paragraph,
@@ -374,7 +502,7 @@ private fun ProGateScreen(
                 .height(52.dp),
             shape = RoundedCornerShape(14.dp)
         ) {
-            Text("Upgrade to Pro — $9.99/month", fontWeight = FontWeight.Bold)
+            Text("Upgrade to Pro — \$9.99/month", fontWeight = FontWeight.Bold)
         }
 
         Spacer(Modifier.height(12.dp))

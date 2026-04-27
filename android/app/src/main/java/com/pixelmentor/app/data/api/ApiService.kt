@@ -40,6 +40,9 @@ interface PixelMentorApiService {
     suspend fun generateQuiz(
         @Body request: QuizRequest
     ): QuizResponse
+
+    @GET("api/v1/lessons/{id}/content")
+    suspend fun getLessonContent(@Path("id") id: String): LessonContentDto
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -113,3 +116,8 @@ data class UserProfileDto(
         plan = Plan.from(plan),
     )
 }
+
+data class LessonContentDto(
+    val lesson_id: String,
+    val content: String,
+)

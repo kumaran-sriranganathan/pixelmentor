@@ -37,6 +37,12 @@ class LessonsRepository @Inject constructor(
             )
         }
     }
+
+    suspend fun getLessonContent(id: String): Result<String> {
+        return safeApiCall {
+            api.getLessonContent(id).content
+        }
+    }
 }
 
 // ── Safe call wrapper ─────────────────────────────────────────────────────────
