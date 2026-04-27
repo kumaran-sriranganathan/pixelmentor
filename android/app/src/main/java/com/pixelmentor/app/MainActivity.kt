@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.pixelmentor.app.ui.auth.LoginScreen
 import com.pixelmentor.app.ui.lessons.LessonsScreen
+import com.pixelmentor.app.ui.lessons.LessonDetailScreen
 import com.pixelmentor.app.ui.tutor.TutorScreen
 import com.pixelmentor.app.ui.profile.ProfileScreen
 import com.pixelmentor.app.ui.theme.PixelMentorTheme
@@ -28,6 +29,9 @@ object Routes {
     const val LESSONS = "lessons"
     const val TUTOR = "tutor"
     const val PROFILE = "profile"
+    const val LESSON_DETAIL = "lessons/{lessonId}"
+
+    fun lessonDetail(lessonId: String) = "lessons/$lessonId"
 }
 
 // ── MainActivity ──────────────────────────────────────────────────────────────
@@ -78,6 +82,19 @@ private fun PixelMentorNavHost() {
                     },
                     onAnalyzePhoto = {
                         navController.navigate(AnalysisRoutes.PICKER)
+                    },
+                    onLessonClick = { lessonId ->
+                        navController.navigate(Routes.lessonDetail(lessonId))
+                    }
+                )
+            }
+
+            composable(Routes.LESSON_DETAIL) {
+                LessonDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onUpgrade = {
+                        // TODO: navigate to billing when implemented
+                        navController.popBackStack()
                     }
                 )
             }

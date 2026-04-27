@@ -1,14 +1,16 @@
 package com.pixelmentor.app.ui.lessons
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +31,7 @@ import com.pixelmentor.app.domain.model.SkillLevel
 fun LessonsScreen(
     onSignOut: () -> Unit,
     onAnalyzePhoto: () -> Unit,
+    onLessonClick: (String) -> Unit,
     viewModel: LessonsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -91,7 +94,10 @@ fun LessonsScreen(
 
                         // ── Lesson cards ──────────────────────────────────────
                         items(state.lessons, key = { it.id }) { lesson ->
-                            LessonCard(lesson = lesson)
+                            LessonCard(
+                                lesson = lesson,
+                                onClick = { onLessonClick(lesson.id) }
+                            )
                         }
                     }
                 }
@@ -108,7 +114,7 @@ fun LessonsScreen(
                             color = MaterialTheme.colorScheme.error,
                         )
                         Button(onClick = viewModel::loadLessons) {
-                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Icon(Icons.Outlined.Refresh, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Retry")
                         }
@@ -205,8 +211,6 @@ private fun AnalyzePhotoBanner(onClick: () -> Unit) {
                         )
                     }
                 }
-
-                // Large camera icon on the right
                 Box(
                     modifier = Modifier
                         .size(80.dp)
@@ -231,39 +235,53 @@ private fun AnalyzePhotoBanner(onClick: () -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun LessonCard(lesson: Lesson) {
+private fun LessonCard(lesson: Lesson, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(16.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = lesson.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    SkillLevelChip(lesson.skillLevel)
+                }
+
                 Text(
-                    text = lesson.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
+                    text = lesson.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                SkillLevelChip(lesson.skillLevel)
+
+                Text(
+                    text = "${lesson.durationMinutes} min",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-
-            Text(
-                text = lesson.description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Text(
-                text = "${lesson.durationMinutes} min",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

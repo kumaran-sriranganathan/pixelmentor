@@ -3,6 +3,7 @@ package com.pixelmentor.app.data.repository
 import com.pixelmentor.app.data.api.PixelMentorApiService
 import com.pixelmentor.app.domain.model.AppException
 import com.pixelmentor.app.domain.model.Lesson
+import com.pixelmentor.app.domain.model.LessonDetail
 import com.pixelmentor.app.domain.model.Result
 import com.pixelmentor.app.domain.model.SkillLevel
 import retrofit2.HttpException
@@ -20,9 +21,20 @@ class LessonsRepository @Inject constructor(
         }
     }
 
-    suspend fun getLesson(id: String): Result<Lesson> {
+    suspend fun getLesson(id: String): Result<LessonDetail> {
         return safeApiCall {
-            api.getLesson(id).toDomain()
+            val dto = api.getLesson(id)
+            LessonDetail(
+                id = dto.id,
+                title = dto.title,
+                description = dto.description,
+                category = dto.category,
+                skillLevel = SkillLevel.from(dto.difficulty),
+                durationMinutes = dto.duration_minutes,
+                isPro = dto.is_pro,
+                tags = dto.tags,
+                content = dto.content,
+            )
         }
     }
 }
