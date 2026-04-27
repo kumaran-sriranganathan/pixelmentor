@@ -31,6 +31,11 @@ fun ProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    // Refresh every time this screen is visited
+    LaunchedEffect(Unit) {
+        viewModel.loadProfile()
+    }
+    
     Scaffold(
         topBar = {
             TopAppBar(
