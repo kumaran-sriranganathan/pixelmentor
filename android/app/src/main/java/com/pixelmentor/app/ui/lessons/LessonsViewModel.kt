@@ -12,6 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -49,6 +50,17 @@ class LessonsViewModel @Inject constructor(
     fun loadLessons() {
         viewModelScope.launch {
             _uiState.value = LessonsUiState.Loading
+
+            // Wait until auth state is no longer Loading before making API call
+            // This ensures restoreSession() has completed and token is available
+            val authState = authRepository.authState
+                .first { it !is AuthState.Loading }
+
+            if (authState is AuthState.Unauthenticated) {
+                _uiState.value = LessonsUiState.Unauthorized
+                return@launch
+            }
+
             when (val result = lessonsRepository.getLessons()) {
                 is Result.Success -> _uiState.value = LessonsUiState.Success(result.data)
                 is Result.Error -> {

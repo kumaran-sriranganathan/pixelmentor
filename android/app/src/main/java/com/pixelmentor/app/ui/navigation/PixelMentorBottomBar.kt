@@ -1,5 +1,7 @@
 package com.pixelmentor.app.ui.navigation
 
+import com.pixelmentor.app.Routes
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
@@ -23,10 +25,8 @@ fun PixelMentorBottomBar(navController: NavController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // Only show bottom bar on main destinations
-    val showBottomBar = bottomNavItems.any { item ->
-        currentDestination?.hierarchy?.any { it.route == item.route } == true
-    }
+    // Only show bottom bar on all pages
+    val showBottomBar = currentDestination?.route != Routes.LOGIN
 
     AnimatedVisibility(
         visible = showBottomBar,

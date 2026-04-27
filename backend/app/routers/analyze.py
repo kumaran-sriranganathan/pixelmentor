@@ -114,9 +114,13 @@ async def analyze_photo(
             "vision_tags": result.vision_tags,
             "blob_path": blob_path,
         }).execute()
+
+        # Increment photos_analyzed on user profile
+        supabase.rpc("increment_photos_analyzed", {"p_user_id": user_id}).execute()
+
     except Exception as e:
         logger.error(f"Failed to save analysis to Supabase: {e}")
-        # Don't fail the request just because persistence failed
+            # Don't fail the request just because persistence failed
 
     logger.info(f"Photo analysis complete — analysis_id={analysis_id} score={result.composition_score}")
 
