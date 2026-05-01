@@ -6,17 +6,7 @@ on:
       - main
 
 permissions:
-  id-token: write   # Required for OIDC
   contents: read
-
-env:
-  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PROD }}
-  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-  ACR_LOGIN_SERVER: pmprodacrprod01.azurecr.io
-  CONTAINER_APP_NAME: pm-prod-api
-  RESOURCE_GROUP: pixelmentor-prod-rg
-  TF_WORKING_DIR: terraform
 
 jobs:
   # ─────────────────────────────────────────────
@@ -45,13 +35,17 @@ jobs:
       - name: Run Tests
         working-directory: backend
         env:
-          ENVIRONMENT: dev
-          AZURE_OPENAI_ENDPOINT: "https://mock.openai.azure.com"
-          COSMOS_DB_ENDPOINT: "https://mock.cosmos.azure.com"
-          ENTRA_TENANT_ID: "mock-tenant-id"
-          ENTRA_API_CLIENT_ID: "mock-client-id"
-          AZURE_SEARCH_ENDPOINT: "https://mock.search.windows.net"
-          AZURE_SEARCH_KEY: "mock-search-key"
+          ENVIRONMENT: test
+          SUPABASE_URL: "https://mock.supabase.co"
+          SUPABASE_ANON_KEY: "mock-anon-key"
+          SUPABASE_SERVICE_KEY: "mock-service-key"
+          SUPABASE_JWT_SECRET: "mock-jwt-secret"
+          OPENAI_API_KEY: "mock-openai-key"
+          TYPESENSE_HOST: "mock.typesense.net"
+          TYPESENSE_API_KEY: "mock-typesense-key"
+          CLOUDFLARE_ACCOUNT_ID: "mock-account-id"
+          R2_ACCESS_KEY_ID: "mock-r2-key"
+          R2_SECRET_ACCESS_KEY: "mock-r2-secret"
         run: |
           pytest tests/ \
             --tb=short \
@@ -66,226 +60,40 @@ jobs:
           path: backend/test-results.xml
 
   # ─────────────────────────────────────────────
-  # 2. Terraform Plan (Prod — read-only preview)
-  # ─────────────────────────────────────────────
-  terraform-plan:
-    name: Terraform Plan (Prod)
-    runs-on: ubuntu-latest
-    environment: prod-plan
-    needs: backend-tests
-    env:
-      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PROD }}
-      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      ARM_USE_OIDC: "true"
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login (OIDC — Prod)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.8.x"
-
-      - name: Terraform Init
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=pixelmentor-tfstate-rg" \
-            -backend-config="storage_account_name=pmtfstate26822a" \
-            -backend-config="container_name=tfstate" \
-            -backend-config="key=pixelmentor.prod.tfstate"
-
-      - name: Terraform Plan
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform plan \
-            -var-file="prod.tfvars" \
-            -no-color \
-            -out=tfplan 2>&1 | tee plan_output.txt
-
-      - name: Upload Plan Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-prod
-          path: |
-            ${{ env.TF_WORKING_DIR }}/tfplan
-            ${{ env.TF_WORKING_DIR }}/plan_output.txt
-          retention-days: 1
-
-  # ─────────────────────────────────────────────
-  # 3. Manual Approval Gate
+  # 2. Manual Approval Gate
+  # Configure required reviewers in:
+  # GitHub → Settings → Environments → prod
   # ─────────────────────────────────────────────
   await-approval:
     name: Await Manual Approval
     runs-on: ubuntu-latest
     environment: prod
-    needs: terraform-plan
+    needs: backend-tests
 
     steps:
       - name: Approval granted
         run: echo "✅ Deployment to prod approved."
 
   # ─────────────────────────────────────────────
-  # 4. Terraform Apply (Prod)
+  # 3. Verify Production Deployment
+  # Railway auto-deploys on push to main branch.
   # ─────────────────────────────────────────────
-  terraform-apply:
-    name: Terraform Apply (Prod)
+  verify-deployment:
+    name: Verify Prod Deployment
     runs-on: ubuntu-latest
-    environment: prod
     needs: await-approval
-    env:
-      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PROD }}
-      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      ARM_USE_OIDC: "true"
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Wait for Railway deployment
+        run: sleep 90
 
-      - name: Azure Login (OIDC — Prod)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Seed Prod ACR with placeholder image
+      - name: Health check
         run: |
-          IMAGE_COUNT=$(az acr repository list --name pmprodacrprod01 --query "length(@)" -o tsv 2>/dev/null || echo "0")
-          if [ "$IMAGE_COUNT" == "0" ] || [ -z "$IMAGE_COUNT" ]; then
-            echo "Seeding prod ACR with placeholder image from dev..."
-            az acr import \
-              --name pmprodacrprod01 \
-              --source pmdevacrdev01.azurecr.io/pixelmentor-api:dev-latest \
-              --image pixelmentor-api:latest \
-              --force
-            echo "✅ Prod ACR seeded"
-          else
-            echo "ℹ️ Prod ACR already has images, skipping seed"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            "${{ secrets.RAILWAY_PROD_URL }}/health")
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Health check failed with status: ${HTTP_STATUS}"
+            exit 1
           fi
-
-      - name: Download Plan
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prod
-          path: ${{ env.TF_WORKING_DIR }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.8.x"
-          terraform_wrapper: false
-
-      - name: Terraform Init
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=pixelmentor-tfstate-rg" \
-            -backend-config="storage_account_name=pmtfstate26822a" \
-            -backend-config="container_name=tfstate" \
-            -backend-config="key=pixelmentor.prod.tfstate"
-
-      - name: Terraform Apply (saved plan)
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform apply -auto-approve tfplan
-
-  # ─────────────────────────────────────────────
-  # 5. Build & Push Docker Image (Prod ACR)
-  # ─────────────────────────────────────────────
-  build-and-push:
-    name: Build & Push Image (Prod)
-    runs-on: ubuntu-latest
-    environment: prod
-    needs: terraform-apply
-    outputs:
-      image_tag: ${{ steps.meta.outputs.image_tag }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login (OIDC — Prod)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Login to Prod ACR
-        run: az acr login --name pmprodacrprod01
-
-      - name: Generate Image Tag
-        id: meta
-        run: |
-          SHORT_SHA=${GITHUB_SHA::8}
-          IMAGE_TAG="${{ env.ACR_LOGIN_SERVER }}/pixelmentor-api:prod-${SHORT_SHA}"
-          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build & Push
-        uses: docker/build-push-action@v5
-        with:
-          context: backend
-          file: backend/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.image_tag }}
-            ${{ env.ACR_LOGIN_SERVER }}/pixelmentor-api:prod-latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ─────────────────────────────────────────────
-  # 6. Deploy to Container App (Prod)
-  # ─────────────────────────────────────────────
-  deploy:
-    name: Deploy to Prod
-    runs-on: ubuntu-latest
-    environment: prod
-    needs: [terraform-apply, build-and-push]
-
-    steps:
-      - name: Azure Login (OIDC — Prod)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deploy to Container App
-        run: |
-          az containerapp update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ needs.build-and-push.outputs.image_tag }}
-
-      - name: Verify Deployment
-        run: |
-          echo "Waiting for new revision to become active..."
-          sleep 60
-          for i in {1..10}; do
-            REVISION_STATE=$(az containerapp revision list \
-              --name ${{ env.CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --query "[0].properties.runningState" -o tsv)
-            echo "Revision state: $REVISION_STATE"
-            if [ "$REVISION_STATE" == "Running" ]; then
-              echo "✅ Production deployment successful — revision is running"
-              exit 0
-            fi
-            echo "Waiting... ($i/10)"
-            sleep 15
-          done
-          echo "❌ Revision failed to reach Running state"
-          exit 1
+          echo "✅ Production deployment healthy"
