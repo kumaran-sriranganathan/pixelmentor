@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     # ── Typesense ─────────────────────────────────────────────────────────────
     typesense_host: str = ""
     typesense_api_key: str = ""
-    lessons_index: str = "lessons"
+    lessons_index: str = "photography-lessons"
 
     # ── OpenAI ────────────────────────────────────────────────────────────────
     openai_api_key: str = ""
