@@ -63,15 +63,10 @@ class LessonDetailViewModel @Inject constructor(
     private fun loadExpandedContent(lesson: LessonDetail) {
         viewModelScope.launch {
             _isLoadingContent.value = true
-            repository.getLessonContent(lessonId).fold(
-                onSuccess = { content ->
-                    _expandedContent.value = content
-                },
-                onFailure = {
-                    // Fall back to original content — not a fatal error
-                    _expandedContent.value = lesson.content
-                }
-            )
+            when (val result = repository.getLessonContent(lessonId)) {
+                is Result.Success -> _expandedContent.value = result.data
+                is Result.Error -> _expandedContent.value = lesson.content
+            }
             _isLoadingContent.value = false
         }
     }
