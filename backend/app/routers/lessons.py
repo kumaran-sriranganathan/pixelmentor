@@ -2,9 +2,9 @@
 # routers/lessons.py — Lesson search + AI content expansion
 ###############################################################################
 
-import json
 import logging
 import typesense
+import typesense.exceptions
 from fastapi import APIRouter, Depends, HTTPException
 from openai import AsyncOpenAI
 
@@ -16,7 +16,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-# ── Typesense client ──────────────────────────────────────────────────────────
+# ── Typesense client (injectable for testing) ─────────────────────────────────
 
 def get_typesense_client():
     return typesense.Client({
@@ -30,7 +30,7 @@ def get_typesense_client():
     })
 
 
-# ── Lesson search ─────────────────────────────────────────────────────────────
+# ── Lesson list ───────────────────────────────────────────────────────────────
 
 @router.get("")
 async def get_lessons(
@@ -38,64 +38,55 @@ async def get_lessons(
     difficulty: str = None,
     category: str = None,
     page: int = 1,
-    per_page: int = 12,
+    page_size: int = 20,
     current_user: dict = Depends(get_current_user),
+    typesense_client=Depends(get_typesense_client),
 ):
-    client = get_typesense_client()
-
     search_params = {
         "q": q,
         "query_by": "title,description,tags",
         "page": page,
-        "per_page": per_page,
+        "per_page": page_size,
         "sort_by": "order:asc",
     }
 
     filter_parts = []
     if difficulty:
         filter_parts.append(f"difficulty:={difficulty}")
+    if category:
+        filter_parts.append(f"category:={category}")
     if filter_parts:
         search_params["filter_by"] = " && ".join(filter_parts)
 
     try:
-        results = client.collections["lessons"].documents.search(search_params)
-        lessons = [hit["document"] for hit in results.get("hits", [])]
+        results = typesense_client.collections["lessons"].documents.search(search_params)
+        # Strip content field from list results — only return in detail view
+        lessons = []
+        for hit in results.get("hits", []):
+            doc = {k: v for k, v in hit["document"].items() if k != "content"}
+            lessons.append(doc)
         return {
             "lessons": lessons,
             "total_count": results.get("found", 0),
             "page": page,
-            "page_size": per_page,
+            "page_size": page_size,
         }
     except Exception as e:
         logger.error(f"Typesense search failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch lessons")
+        raise HTTPException(status_code=502, detail="Failed to fetch lessons")
 
 
-@router.get("/{lesson_id}")
-async def get_lesson(
-    lesson_id: str,
-    current_user: dict = Depends(get_current_user),
-):
-    client = get_typesense_client()
-    try:
-        doc = client.collections["lessons"].documents[lesson_id].retrieve()
-        return doc
-    except Exception as e:
-        logger.error(f"Failed to fetch lesson {lesson_id}: {e}")
-        raise HTTPException(status_code=404, detail="Lesson not found")
-
-
-# ── AI content expansion ──────────────────────────────────────────────────────
+# ── Lesson detail ─────────────────────────────────────────────────────────────
 
 @router.get("/{lesson_id}/content")
 async def get_lesson_content(
     lesson_id: str,
     current_user: dict = Depends(get_current_user),
+    typesense_client=Depends(get_typesense_client),
 ):
     """
-    Returns AI-expanded lesson content. Checks Supabase cache first —
-    if content was already generated for this lesson, returns it immediately.
-    Otherwise generates with GPT-4o and caches it.
+    Returns AI-expanded lesson content. Checks Supabase cache first.
+    If not cached, generates with GPT-4o and caches the result.
     """
     supabase = get_supabase_client()
 
@@ -113,12 +104,13 @@ async def get_lesson_content(
         pass  # Cache miss — generate content
 
     # ── Fetch lesson from Typesense ───────────────────────────────────────────
-    typesense_client = get_typesense_client()
     try:
         lesson = typesense_client.collections["lessons"].documents[lesson_id].retrieve()
+    except typesense.exceptions.ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Lesson not found")
     except Exception as e:
         logger.error(f"Failed to fetch lesson {lesson_id}: {e}")
-        raise HTTPException(status_code=404, detail="Lesson not found")
+        raise HTTPException(status_code=502, detail="Failed to fetch lesson")
 
     # ── Generate with GPT-4o ──────────────────────────────────────────────────
     openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -131,7 +123,6 @@ async def get_lesson_content(
     tags = lesson.get("tags", [])
     summary = lesson.get("content", description)
 
-    # Calibrate depth based on duration
     if duration <= 15:
         depth = "3-4 sections, concise explanations, 1 exercise"
     elif duration <= 30:
@@ -158,7 +149,7 @@ Content here...
 
 Use these formatting conventions:
 - ## for main section headers
-- ### for sub-headers  
+- ### for sub-headers
 - Start bullet points with "- "
 - Start tips with "💡 "
 - Include specific camera settings (f-stop, ISO, shutter speed) where relevant
@@ -186,11 +177,25 @@ Be specific, practical and encouraging. Include real-world examples."""
             logger.info(f"Cached generated content for lesson {lesson_id}")
         except Exception as e:
             logger.error(f"Failed to cache lesson content: {e}")
-            # Non-fatal — return content even if caching fails
 
         return {"lesson_id": lesson_id, "content": content}
 
     except Exception as e:
         logger.error(f"GPT-4o content generation failed for {lesson_id}: {e}")
-        # Fallback to original summary if generation fails
         return {"lesson_id": lesson_id, "content": summary}
+
+
+@router.get("/{lesson_id}")
+async def get_lesson(
+    lesson_id: str,
+    current_user: dict = Depends(get_current_user),
+    typesense_client=Depends(get_typesense_client),
+):
+    try:
+        doc = typesense_client.collections["lessons"].documents[lesson_id].retrieve()
+        return doc
+    except typesense.exceptions.ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    except Exception as e:
+        logger.error(f"Failed to fetch lesson {lesson_id}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch lesson")
