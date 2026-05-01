@@ -6,129 +6,15 @@ on:
       - dev
 
 permissions:
-  id-token: write   # Required for OIDC
   contents: read
-
-env:
-  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-  ACR_LOGIN_SERVER: pmdevacrdev01.azurecr.io
-  CONTAINER_APP_NAME: pm-dev-api
-  RESOURCE_GROUP: pixelmentor-dev-rg
-  TF_WORKING_DIR: terraform
 
 jobs:
   # ─────────────────────────────────────────────
-  # 1. Terraform Apply (Dev)
-  # ─────────────────────────────────────────────
-  terraform-apply:
-    name: Terraform Apply (Dev)
-    runs-on: ubuntu-latest
-    environment: dev
-    env:
-      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      ARM_USE_OIDC: "true"
-    outputs:
-      acr_login_server: ${{ steps.tf-outputs.outputs.acr_login_server }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.8.x"
-          terraform_wrapper: false
-
-      - name: Terraform Init
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=pixelmentor-tfstate-rg" \
-            -backend-config="storage_account_name=pmtfstate26822a" \
-            -backend-config="container_name=tfstate" \
-            -backend-config="key=pixelmentor.terraform.tfstate"
-
-      - name: Terraform Apply
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform apply \
-            -var-file="dev.tfvars" \
-            -auto-approve \
-            -no-color
-
-      - name: Capture Terraform Outputs
-        id: tf-outputs
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> $GITHUB_OUTPUT
-
-  # ─────────────────────────────────────────────
-  # 2. Build & Push Docker Image
-  # ─────────────────────────────────────────────
-  build-and-push:
-    name: Build & Push Image
-    runs-on: ubuntu-latest
-    environment: dev
-    needs: terraform-apply
-    outputs:
-      image_tag: ${{ steps.meta.outputs.image_tag }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Login to ACR
-        run: az acr login --name pmdevacrdev01
-
-      - name: Generate Image Tag
-        id: meta
-        run: |
-          SHORT_SHA=${GITHUB_SHA::8}
-          IMAGE_TAG="${{ env.ACR_LOGIN_SERVER }}/pixelmentor-api:dev-${SHORT_SHA}"
-          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-          echo "Image tag: ${IMAGE_TAG}"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build & Push
-        uses: docker/build-push-action@v5
-        with:
-          context: backend
-          file: backend/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.image_tag }}
-            ${{ env.ACR_LOGIN_SERVER }}/pixelmentor-api:dev-latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ─────────────────────────────────────────────
-  # 3. Backend Tests
+  # 1. Backend Tests
   # ─────────────────────────────────────────────
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
-    needs: [] # Run in parallel with build
 
     steps:
       - name: Checkout
@@ -149,13 +35,17 @@ jobs:
       - name: Run Tests
         working-directory: backend
         env:
-          ENVIRONMENT: dev
-          AZURE_OPENAI_ENDPOINT: "https://mock.openai.azure.com"
-          COSMOS_DB_ENDPOINT: "https://mock.cosmos.azure.com"
-          ENTRA_TENANT_ID: "mock-tenant-id"
-          ENTRA_API_CLIENT_ID: "mock-client-id"
-          AZURE_SEARCH_ENDPOINT: "https://mock.search.windows.net"
-          AZURE_SEARCH_KEY: "mock-search-key"
+          ENVIRONMENT: test
+          SUPABASE_URL: "https://mock.supabase.co"
+          SUPABASE_ANON_KEY: "mock-anon-key"
+          SUPABASE_SERVICE_KEY: "mock-service-key"
+          SUPABASE_JWT_SECRET: "mock-jwt-secret"
+          OPENAI_API_KEY: "mock-openai-key"
+          TYPESENSE_HOST: "mock.typesense.net"
+          TYPESENSE_API_KEY: "mock-typesense-key"
+          CLOUDFLARE_ACCOUNT_ID: "mock-account-id"
+          R2_ACCESS_KEY_ID: "mock-r2-key"
+          R2_SECRET_ACCESS_KEY: "mock-r2-secret"
         run: |
           pytest tests/ \
             --tb=short \
@@ -170,62 +60,26 @@ jobs:
           path: backend/test-results.xml
 
   # ─────────────────────────────────────────────
-  # 4. Deploy to Container App (Dev)
+  # 2. Deploy to Railway (Dev)
+  # Railway auto-deploys on push to dev branch.
+  # This step just verifies the deployment health.
   # ─────────────────────────────────────────────
-  deploy:
-    name: Deploy to Dev
+  verify-deployment:
+    name: Verify Dev Deployment
     runs-on: ubuntu-latest
-    environment: dev
-    needs: [build-and-push, backend-tests]
+    needs: backend-tests
 
     steps:
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - name: Wait for Railway deployment
+        run: sleep 60
 
-      - name: Deploy to Container App
+      - name: Health check
         run: |
-          az containerapp update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ needs.build-and-push.outputs.image_tag }}
-
-      - name: Verify Deployment
-        run: |
-          echo "Waiting for new revision to become active..."
-          sleep 120
-
-          # Wait for the latest revision to be running
-          for i in {1..10}; do
-            REVISION_STATE=$(az containerapp revision list \
-              --name ${{ env.CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --query "[0].properties.runningState" -o tsv)
-            echo "Revision state: $REVISION_STATE"
-            if [ "$REVISION_STATE" == "Running" ]; then
-              break
-            fi
-            echo "Waiting for revision to be running... ($i/10)"
-            sleep 15
-          done
-
-          FQDN=$(az containerapp show \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query "properties.configuration.ingress.fqdn" -o tsv)
-          echo "Checking health at: https://${FQDN}/health"
-
-          for i in {1..10}; do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://${FQDN}/health")
-            if [ "$HTTP_STATUS" == "200" ]; then
-              echo "✅ Deployment healthy — ${FQDN}"
-              exit 0
-            fi
-            echo "Attempt $i failed with status: ${HTTP_STATUS}, retrying in 30s..."
-            sleep 30
-          done
-          echo "❌ Health check failed after 10 attempts"
-          exit 1
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            "${{ secrets.RAILWAY_DEV_URL }}/health")
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Health check failed with status: ${HTTP_STATUS}"
+            exit 1
+          fi
+          echo "✅ Dev deployment healthy"
