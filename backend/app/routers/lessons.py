@@ -59,7 +59,7 @@ async def get_lessons(
         search_params["filter_by"] = " && ".join(filter_parts)
 
     try:
-        results = typesense_client.collections["lessons"].documents.search(search_params)
+        results = typesense_client.collections[settings.lessons_index].documents.search(search_params)
         # Strip content field from list results — only return in detail view
         lessons = []
         for hit in results.get("hits", []):
@@ -105,7 +105,7 @@ async def get_lesson_content(
 
     # ── Fetch lesson from Typesense ───────────────────────────────────────────
     try:
-        lesson = typesense_client.collections["lessons"].documents[lesson_id].retrieve()
+        lesson = typesense_client.collections[settings.lessons_index].documents[lesson_id].retrieve()
     except typesense.exceptions.ObjectNotFound:
         raise HTTPException(status_code=404, detail="Lesson not found")
     except Exception as e:
@@ -192,7 +192,7 @@ async def get_lesson(
     typesense_client=Depends(get_typesense_client),
 ):
     try:
-        doc = typesense_client.collections["lessons"].documents[lesson_id].retrieve()
+        doc = typesense_client.collections[settings.lessons_index].documents[lesson_id].retrieve()
         return doc
     except typesense.exceptions.ObjectNotFound:
         raise HTTPException(status_code=404, detail="Lesson not found")
