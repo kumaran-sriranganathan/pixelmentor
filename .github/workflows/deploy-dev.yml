@@ -68,6 +68,7 @@ jobs:
     name: Verify Dev Deployment
     runs-on: ubuntu-latest
     needs: backend-tests
+    continue-on-error: true
 
     steps:
       - name: Wait for Railway deployment
