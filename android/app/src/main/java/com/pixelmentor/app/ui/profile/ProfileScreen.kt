@@ -31,11 +31,6 @@ fun ProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Refresh every time this screen is visited
-    LaunchedEffect(Unit) {
-        viewModel.loadProfile()
-    }
-    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -452,9 +447,14 @@ private fun PlanCard(plan: Plan) {
             if (plan == Plan.FREE) {
                 FilledTonalButton(
                     onClick = { /* TODO: navigate to billing */ },
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Text("Upgrade", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        "Upgrade",
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1
+                    )
                 }
             }
         }

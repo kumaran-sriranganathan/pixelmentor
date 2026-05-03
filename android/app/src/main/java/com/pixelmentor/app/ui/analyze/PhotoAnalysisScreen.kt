@@ -228,7 +228,7 @@ private fun PickerContent(
                 Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "Analyze with AI",
+                    "Analyze Photo",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )

@@ -70,7 +70,11 @@ fun TutorScreen(
                     tutorState = tutorState,
                     inputText = inputText,
                     onInputChanged = viewModel::onInputChanged,
-                    onSend = viewModel::sendMessage
+                    onSend = viewModel::sendMessage,
+                    onSuggestionClick = { suggestion ->
+                        viewModel.onInputChanged(suggestion)
+                        viewModel.sendMessage()
+                    }
                 )
                 TutorTab.QUIZ -> QuizTab(
                     quizState = quizState,
@@ -149,7 +153,8 @@ private fun ChatTab(
     tutorState: TutorUiState,
     inputText: String,
     onInputChanged: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    onSuggestionClick: (String) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
 
@@ -157,7 +162,11 @@ private fun ChatTab(
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+    ) {
         // Messages list
         LazyColumn(
             state = listState,
@@ -166,7 +175,7 @@ private fun ChatTab(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (messages.isEmpty()) {
-                item { ChatWelcome() }
+                item { ChatWelcome(onSuggestionClick = onSuggestionClick) }
             }
             items(messages, key = { it.id }) { message ->
                 ChatBubble(message = message)
@@ -194,7 +203,7 @@ private fun ChatTab(
 }
 
 @Composable
-private fun ChatWelcome() {
+private fun ChatWelcome(onSuggestionClick: (String) -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -234,7 +243,7 @@ private fun ChatWelcome() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
-        // Suggestion chips
+        // Suggestion chips — tapping sends the message immediately
         val suggestions = listOf(
             "Explain the rule of thirds",
             "How do I shoot in low light?",
@@ -242,7 +251,7 @@ private fun ChatWelcome() {
         )
         suggestions.forEach { suggestion ->
             SuggestionChip(
-                onClick = {},
+                onClick = { onSuggestionClick(suggestion) },
                 label = {
                     Text(suggestion, style = MaterialTheme.typography.labelMedium)
                 }
