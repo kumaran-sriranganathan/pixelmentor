@@ -1,5 +1,7 @@
 ###############################################################################
 # routers/lessons.py — Lesson search + AI content expansion
+# Retry logic: 3 attempts with exponential backoff for Typesense calls.
+# Fallback: serves lessons from Supabase cache if Typesense is unreachable.
 ###############################################################################
 
 import logging
@@ -7,6 +9,13 @@ import typesense
 import typesense.exceptions
 from fastapi import APIRouter, Depends, HTTPException
 from openai import AsyncOpenAI
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log,
+)
 
 from app.config import settings
 from app.middleware.auth import get_current_user
@@ -26,8 +35,22 @@ def get_typesense_client():
             "protocol": "https",
         }],
         "api_key": settings.typesense_api_key,
-        "connection_timeout_seconds": 10,
+        "connection_timeout_seconds": 5,   # fail fast — don't hang the request
+        "num_retries": 1,                  # typesense client-level retry
     })
+
+
+# ── Retry decorator for Typesense calls ──────────────────────────────────────
+# 3 attempts: immediate, 1s delay, 3s delay — total max wait ~4s before giving up
+
+def _typesense_retry(func):
+    return retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=3),
+        retry=retry_if_exception_type(Exception),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )(func)
 
 
 # ── Lesson list ───────────────────────────────────────────────────────────────
@@ -59,20 +82,46 @@ async def get_lessons(
         search_params["filter_by"] = " && ".join(filter_parts)
 
     try:
-        results = typesense_client.collections[settings.lessons_index].documents.search(search_params)
-        # Strip content field from list results — only return in detail view
-        lessons = []
-        for hit in results.get("hits", []):
-            doc = {k: v for k, v in hit["document"].items() if k != "content"}
-            lessons.append(doc)
+        @_typesense_retry
+        def _search():
+            return typesense_client.collections[settings.lessons_index].documents.search(
+                search_params
+            )
+
+        results = _search()
+        # Strip content field from list results — only returned in detail view
+        lessons = [
+            {k: v for k, v in hit["document"].items() if k != "content"}
+            for hit in results.get("hits", [])
+        ]
         return {
             "lessons": lessons,
             "total_count": results.get("found", 0),
             "page": page,
             "page_size": page_size,
         }
+
     except Exception as e:
-        logger.error(f"Typesense search failed: {e}")
+        logger.error(f"Typesense search failed after retries: {e}")
+
+        # ── Fallback: serve from Supabase lesson cache ────────────────────
+        try:
+            supabase = get_supabase_client()
+            cached = supabase.table("lesson_list_cache") \
+                .select("lessons, total_count") \
+                .single() \
+                .execute()
+            if cached.data:
+                logger.warning("Serving lessons from Supabase fallback cache")
+                return {
+                    "lessons": cached.data["lessons"],
+                    "total_count": cached.data["total_count"],
+                    "page": page,
+                    "page_size": page_size,
+                }
+        except Exception:
+            pass
+
         raise HTTPException(status_code=502, detail="Failed to fetch lessons")
 
 
@@ -85,12 +134,12 @@ async def get_lesson_content(
     typesense_client=Depends(get_typesense_client),
 ):
     """
-    Returns AI-expanded lesson content. Checks Supabase cache first.
-    If not cached, generates with GPT-4o and caches the result.
+    Returns AI-expanded lesson content.
+    Checks Supabase cache first — only calls GPT-4o on first access.
     """
     supabase = get_supabase_client()
 
-    # ── Check cache ───────────────────────────────────────────────────────────
+    # ── Check content cache ───────────────────────────────────────────────────
     try:
         cached = supabase.table("lesson_content_cache") \
             .select("content") \
@@ -103,13 +152,20 @@ async def get_lesson_content(
     except Exception:
         pass  # Cache miss — generate content
 
-    # ── Fetch lesson from Typesense ───────────────────────────────────────────
+    # ── Fetch lesson metadata from Typesense ──────────────────────────────────
     try:
-        lesson = typesense_client.collections[settings.lessons_index].documents[lesson_id].retrieve()
+        @_typesense_retry
+        def _retrieve():
+            return typesense_client.collections[settings.lessons_index].documents[
+                lesson_id
+            ].retrieve()
+
+        lesson = _retrieve()
+
     except typesense.exceptions.ObjectNotFound:
         raise HTTPException(status_code=404, detail="Lesson not found")
     except Exception as e:
-        logger.error(f"Failed to fetch lesson {lesson_id}: {e}")
+        logger.error(f"Failed to fetch lesson {lesson_id} after retries: {e}")
         raise HTTPException(status_code=502, detail="Failed to fetch lesson")
 
     # ── Generate with GPT-4o ──────────────────────────────────────────────────
@@ -181,7 +237,8 @@ Be specific, practical and encouraging. Include real-world examples."""
         return {"lesson_id": lesson_id, "content": content}
 
     except Exception as e:
-        logger.error(f"GPT-4o content generation failed for {lesson_id}: {e}")
+        logger.error(f"GPT-4o generation failed for {lesson_id}: {e}")
+        # Fallback to original short summary
         return {"lesson_id": lesson_id, "content": summary}
 
 
@@ -192,10 +249,16 @@ async def get_lesson(
     typesense_client=Depends(get_typesense_client),
 ):
     try:
-        doc = typesense_client.collections[settings.lessons_index].documents[lesson_id].retrieve()
-        return doc
+        @_typesense_retry
+        def _retrieve():
+            return typesense_client.collections[settings.lessons_index].documents[
+                lesson_id
+            ].retrieve()
+
+        return _retrieve()
+
     except typesense.exceptions.ObjectNotFound:
         raise HTTPException(status_code=404, detail="Lesson not found")
     except Exception as e:
-        logger.error(f"Failed to fetch lesson {lesson_id}: {e}")
+        logger.error(f"Failed to fetch lesson {lesson_id} after retries: {e}")
         raise HTTPException(status_code=502, detail="Failed to fetch lesson")
