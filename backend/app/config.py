@@ -36,11 +36,6 @@ class Settings(BaseSettings):
     r2_bucket_name: str = "pixelmentor-photos"
     r2_public_domain: str = ""
 
-    # ── Typesense ─────────────────────────────────────────────────────────────
-    typesense_host: str = ""
-    typesense_api_key: str = ""
-    lessons_index: str = "photography-lessons"
-
     # ── OpenAI ────────────────────────────────────────────────────────────────
     openai_api_key: str = ""
 

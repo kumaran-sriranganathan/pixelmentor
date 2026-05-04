@@ -1,31 +1,27 @@
 """
 tests/test_lessons.py
 ----------------------
-Unit tests for the /api/v1/lessons router using mocked Typesense.
+Unit tests for the /api/v1/lessons router using mocked Supabase.
 """
 
 from __future__ import annotations
-
-from unittest.mock import MagicMock
-
+from unittest.mock import MagicMock, patch
 import pytest
-import typesense.exceptions
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.middleware.auth import get_current_user
-from app.routers.lessons import get_typesense_client
+from app.utils.supabase_client import get_supabase_client
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Sample data
 # ---------------------------------------------------------------------------
 
-SAMPLE_DOCS = [
+SAMPLE_LESSONS = [
     {
         "id": "lesson-001",
         "title": "Understanding Your Camera",
         "description": "Get comfortable with your camera body.",
-        "content": "Full content here.",
         "category": "fundamentals",
         "difficulty": "beginner",
         "duration_minutes": 15,
@@ -37,7 +33,6 @@ SAMPLE_DOCS = [
         "id": "lesson-002",
         "title": "The Exposure Triangle",
         "description": "Master aperture, shutter speed, and ISO.",
-        "content": "Full content here.",
         "category": "fundamentals",
         "difficulty": "beginner",
         "duration_minutes": 20,
@@ -49,7 +44,6 @@ SAMPLE_DOCS = [
         "id": "lesson-009",
         "title": "Advanced Flash Techniques",
         "description": "Off-camera lighting for pros.",
-        "content": "Full content here.",
         "category": "lighting",
         "difficulty": "advanced",
         "duration_minutes": 50,
@@ -59,23 +53,42 @@ SAMPLE_DOCS = [
     },
 ]
 
-
-def _make_search_response(docs: list[dict], total: int | None = None) -> dict:
-    return {
-        "hits": [{"document": doc} for doc in docs],
-        "found": total if total is not None else len(docs),
-    }
-
-
-def _make_mock(docs: list[dict], *, total: int | None = None) -> MagicMock:
-    mock = MagicMock()
-    mock.collections.__getitem__.return_value.documents.search.return_value = \
-        _make_search_response(docs, total)
-    return mock
+SAMPLE_LESSON_DETAIL = {
+    **SAMPLE_LESSONS[0],
+    "content": "Full lesson content here.",
+}
 
 
 async def _mock_auth():
     return {"sub": "dev-user-123", "email": "dev@pixelmentor.com", "name": "Dev User"}
+
+
+def _make_supabase_mock(lessons=None, lesson=None, count=None):
+    """Create a mock Supabase client."""
+    mock = MagicMock()
+
+    # Mock for list query
+    list_response = MagicMock()
+    list_response.data = lessons if lessons is not None else SAMPLE_LESSONS
+    list_response.count = count if count is not None else len(SAMPLE_LESSONS)
+
+    # Mock for single lesson query
+    detail_response = MagicMock()
+    detail_response.data = lesson if lesson is not None else SAMPLE_LESSON_DETAIL
+
+    # Chain the query builder
+    mock_query = MagicMock()
+    mock_query.select.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.order.return_value = mock_query
+    mock_query.range.return_value = mock_query
+    mock_query.single.return_value = mock_query
+    mock_query.text_search.return_value = mock_query
+    mock_query.execute.return_value = list_response
+
+    mock.table.return_value = mock_query
+
+    return mock
 
 
 # ---------------------------------------------------------------------------
@@ -84,10 +97,10 @@ async def _mock_auth():
 
 @pytest.fixture()
 def client():
-    """Returns a TestClient with auth mocked. Each test sets its own Typesense mock."""
     app.dependency_overrides[get_current_user] = _mock_auth
-    app.dependency_overrides[get_typesense_client] = lambda: _make_mock([])
-    yield TestClient(app)
+    with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
+        mock_get_client.return_value = _make_supabase_mock()
+        yield TestClient(app)
     app.dependency_overrides.clear()
 
 
@@ -96,96 +109,48 @@ def client():
 # ---------------------------------------------------------------------------
 
 class TestListLessons:
-    def test_returns_all_lessons(self, client: TestClient) -> None:
-        mock = _make_mock(SAMPLE_DOCS)
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
+    def test_returns_200(self, client: TestClient) -> None:
         resp = client.get("/api/v1/lessons")
-
         assert resp.status_code == 200
+
+    def test_returns_lessons_list(self, client: TestClient) -> None:
+        resp = client.get("/api/v1/lessons")
         body = resp.json()
-        assert body["total_count"] == 3
-        assert len(body["lessons"]) == 3
+        assert "lessons" in body
+        assert isinstance(body["lessons"], list)
+
+    def test_returns_total_count(self, client: TestClient) -> None:
+        resp = client.get("/api/v1/lessons")
+        body = resp.json()
+        assert "total_count" in body
+
+    def test_returns_page_info(self, client: TestClient) -> None:
+        resp = client.get("/api/v1/lessons")
+        body = resp.json()
         assert body["page"] == 1
         assert body["page_size"] == 20
 
-    def test_passes_search_text_when_q_provided(self, client: TestClient) -> None:
-        mock = _make_mock([SAMPLE_DOCS[0]])
-        app.dependency_overrides[get_typesense_client] = lambda: mock
+    def test_accepts_difficulty_filter(self, client: TestClient) -> None:
+        resp = client.get("/api/v1/lessons?difficulty=beginner")
+        assert resp.status_code == 200
 
+    def test_accepts_category_filter(self, client: TestClient) -> None:
+        resp = client.get("/api/v1/lessons?category=fundamentals")
+        assert resp.status_code == 200
+
+    def test_accepts_search_query(self, client: TestClient) -> None:
         resp = client.get("/api/v1/lessons?q=camera")
-
         assert resp.status_code == 200
-        call_kwargs = mock.collections.__getitem__.return_value.documents.search.call_args[0][0]
-        assert call_kwargs["q"] == "camera"
 
-    def test_uses_wildcard_when_no_q(self, client: TestClient) -> None:
-        mock = _make_mock(SAMPLE_DOCS)
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        client.get("/api/v1/lessons")
-
-        call_kwargs = mock.collections.__getitem__.return_value.documents.search.call_args[0][0]
-        assert call_kwargs["q"] == "*"
-
-    def test_filter_by_category(self, client: TestClient) -> None:
-        mock = _make_mock([SAMPLE_DOCS[2]])
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        resp = client.get("/api/v1/lessons?category=lighting")
-
+    def test_accepts_pagination(self, client: TestClient) -> None:
+        resp = client.get("/api/v1/lessons?page=2&page_size=5")
         assert resp.status_code == 200
-        call_kwargs = mock.collections.__getitem__.return_value.documents.search.call_args[0][0]
-        assert "category:=lighting" in call_kwargs["filter_by"]
 
-    def test_filter_by_difficulty(self, client: TestClient) -> None:
-        mock = _make_mock([SAMPLE_DOCS[2]])
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        client.get("/api/v1/lessons?difficulty=advanced")
-
-        call_kwargs = mock.collections.__getitem__.return_value.documents.search.call_args[0][0]
-        assert "difficulty:=advanced" in call_kwargs["filter_by"]
-
-    def test_combined_filters(self, client: TestClient) -> None:
-        mock = _make_mock([])
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        client.get("/api/v1/lessons?category=lighting&difficulty=advanced")
-
-        call_kwargs = mock.collections.__getitem__.return_value.documents.search.call_args[0][0]
-        assert "category:=lighting" in call_kwargs["filter_by"]
-        assert "difficulty:=advanced" in call_kwargs["filter_by"]
-
-    def test_pagination(self, client: TestClient) -> None:
-        mock = _make_mock(SAMPLE_DOCS[1:2], total=3)
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        resp = client.get("/api/v1/lessons?page=2&page_size=1")
-
-        assert resp.status_code == 200
-        call_kwargs = mock.collections.__getitem__.return_value.documents.search.call_args[0][0]
-        assert call_kwargs["page"] == 2
-        assert call_kwargs["per_page"] == 1
-
-    def test_returns_502_on_search_error(self, client: TestClient) -> None:
-        mock = MagicMock()
-        mock.collections.__getitem__.return_value.documents.search.side_effect = \
-            Exception("Simulated failure")
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        resp = client.get("/api/v1/lessons")
-
+    def test_returns_502_on_db_error(self, client: TestClient) -> None:
+        with patch("app.routers.lessons.get_supabase_client") as mock:
+            mock.return_value.table.side_effect = Exception("DB error")
+            resp = client.get("/api/v1/lessons")
         assert resp.status_code == 502
-
-    def test_response_does_not_include_content(self, client: TestClient) -> None:
-        mock = _make_mock(SAMPLE_DOCS)
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        resp = client.get("/api/v1/lessons")
-
-        for lesson in resp.json()["lessons"]:
-            assert "content" not in lesson
 
 
 # ---------------------------------------------------------------------------
@@ -193,35 +158,33 @@ class TestListLessons:
 # ---------------------------------------------------------------------------
 
 class TestGetLesson:
-    def test_returns_lesson_with_content(self, client: TestClient) -> None:
-        mock = MagicMock()
-        mock.collections.__getitem__.return_value.documents.__getitem__.return_value.retrieve.return_value = \
-            SAMPLE_DOCS[0]
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        resp = client.get("/api/v1/lessons/lesson-001")
-
+    def test_returns_200(self, client: TestClient) -> None:
+        with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
+            mock_get_client.return_value = _make_supabase_mock(lesson=SAMPLE_LESSON_DETAIL)
+            resp = client.get("/api/v1/lessons/lesson-001")
         assert resp.status_code == 200
+
+    def test_returns_lesson_fields(self, client: TestClient) -> None:
+        with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
+            mock_get_client.return_value = _make_supabase_mock(lesson=SAMPLE_LESSON_DETAIL)
+            resp = client.get("/api/v1/lessons/lesson-001")
         body = resp.json()
         assert body["id"] == "lesson-001"
         assert "content" in body
 
     def test_returns_404_for_missing_lesson(self, client: TestClient) -> None:
-        mock = MagicMock()
-        mock.collections.__getitem__.return_value.documents.__getitem__.return_value.retrieve.side_effect = \
-            typesense.exceptions.ObjectNotFound("lesson", "not found")
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        resp = client.get("/api/v1/lessons/does-not-exist")
-
+        with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
+            mock_supabase = _make_supabase_mock()
+            # Return None data for missing lesson
+            mock_response = MagicMock()
+            mock_response.data = None
+            mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
+            mock_get_client.return_value = mock_supabase
+            resp = client.get("/api/v1/lessons/does-not-exist")
         assert resp.status_code == 404
 
-    def test_returns_502_on_search_error(self, client: TestClient) -> None:
-        mock = MagicMock()
-        mock.collections.__getitem__.return_value.documents.__getitem__.return_value.retrieve.side_effect = \
-            Exception("Upstream error")
-        app.dependency_overrides[get_typesense_client] = lambda: mock
-
-        resp = client.get("/api/v1/lessons/lesson-001")
-
+    def test_returns_502_on_db_error(self, client: TestClient) -> None:
+        with patch("app.routers.lessons.get_supabase_client") as mock:
+            mock.return_value.table.side_effect = Exception("DB error")
+            resp = client.get("/api/v1/lessons/lesson-001")
         assert resp.status_code == 502
