@@ -4,8 +4,11 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pixelmentor.app.data.auth.AuthRepository
+import com.pixelmentor.app.data.auth.SupabaseAuthManager
 import com.pixelmentor.app.domain.model.AuthState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.compose.auth.ComposeAuthResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,13 +26,50 @@ sealed class LoginUiState {
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    private val supabaseAuthManager: SupabaseAuthManager,
 ) : ViewModel() {
+
+    // Exposed so LoginScreen can call composeAuth.rememberSignInWithGoogle()
+    val supabaseClient: SupabaseClient get() = supabaseAuthManager.client
 
     val authState: StateFlow<AuthState> = authRepository.authState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AuthState.Loading)
 
     private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
     val uiState: StateFlow<LoginUiState> = _uiState
+
+    // Called by the ComposeAuth rememberSignInWithGoogle callback
+    fun onGoogleSignInResult(result: ComposeAuthResult) {
+        when (result) {
+            is ComposeAuthResult.Success -> {
+                // Session is already set on the Supabase client by ComposeAuth —
+                // sync it into our AuthRepository so the rest of the app sees it
+                viewModelScope.launch {
+                    try {
+                        authRepository.restoreSession()
+                        _uiState.update { LoginUiState.Idle }
+                    } catch (e: Exception) {
+                        Log.e("LoginViewModel", "Failed to sync Google session", e)
+                        _uiState.update {
+                            LoginUiState.Error(friendlyAuthError(e, isSignUp = false, isGoogle = true))
+                        }
+                    }
+                }
+            }
+            is ComposeAuthResult.Error -> {
+                Log.e("LoginViewModel", "Google sign in error", result.exception)
+                _uiState.update {
+                    LoginUiState.Error(
+                        friendlyAuthError(result.exception, isSignUp = false, isGoogle = true)
+                    )
+                }
+            }
+            is ComposeAuthResult.Cancelled -> {
+                // User dismissed the picker — just go back to idle, no error shown
+                _uiState.update { LoginUiState.Idle }
+            }
+        }
+    }
 
     fun signInWithEmail(email: String, password: String) {
         viewModelScope.launch {
@@ -40,21 +80,6 @@ class LoginViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e("LoginViewModel", "Sign in failed", e)
                 _uiState.update { LoginUiState.Error(friendlyAuthError(e, isSignUp = false)) }
-            }
-        }
-    }
-
-    fun signInWithGoogle() {
-        viewModelScope.launch {
-            _uiState.update { LoginUiState.SigningIn }
-            try {
-                authRepository.signInWithGoogle()
-                _uiState.update { LoginUiState.Idle }
-            } catch (e: Exception) {
-                Log.e("LoginViewModel", "Google sign in failed", e)
-                _uiState.update {
-                    LoginUiState.Error(friendlyAuthError(e, isSignUp = false, isGoogle = true))
-                }
             }
         }
     }

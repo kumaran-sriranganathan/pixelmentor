@@ -5,8 +5,9 @@ import com.pixelmentor.app.domain.model.AuthUser
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.auth
-import io.github.jan.supabase.auth.providers.Google
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.compose.auth.ComposeAuth
+import io.github.jan.supabase.compose.auth.googleNativeLogin
 import io.github.jan.supabase.createSupabaseClient
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,6 +20,10 @@ class SupabaseAuthManager @Inject constructor() {
         supabaseKey = BuildConfig.SUPABASE_ANON_KEY,
     ) {
         install(Auth)
+        install(ComposeAuth) {
+            // Uses Credential Manager — no browser redirect needed
+            googleNativeLogin(serverClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID)
+        }
     }
 
     suspend fun signInWithEmail(email: String, password: String): AuthUser {
@@ -29,9 +34,11 @@ class SupabaseAuthManager @Inject constructor() {
         return getCurrentUser() ?: error("Sign in succeeded but no user found")
     }
 
-    suspend fun signInWithGoogle(): AuthUser {
-        client.auth.signInWith(Google)
-        return getCurrentUser() ?: error("Sign in succeeded but no user found")
+    // Google Sign-In is handled directly in the composable via ComposeAuth.
+    // This function is kept for compatibility but should not be called directly —
+    // use the rememberSignInWithGoogle() hook in LoginScreen instead.
+    suspend fun signInWithGoogle() {
+        error("Use ComposeAuth rememberSignInWithGoogle() in the UI layer instead")
     }
 
     suspend fun signUp(email: String, password: String): AuthUser {
