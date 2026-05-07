@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1067498793362",
+    "project_id": "pixelmentor-69d32",
+    "storage_bucket": "pixelmentor-69d32.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1067498793362:android:d77f933e0a5a0e5ae8394b",
+        "android_client_info": {
+          "package_name": "com.pixelmentor.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDfllJ96VylmH0c1-DItqRAW1rHKmOihV8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
