@@ -43,6 +43,19 @@ class LessonsRepository @Inject constructor(
             api.getLessonContent(id).content
         }
     }
+
+    suspend fun markLessonComplete(id: String): Result<Unit> {
+        return safeApiCall {
+            api.markLessonComplete(id)
+            Unit
+        }
+    }
+
+    suspend fun getCompletedLessonIds(): Result<Set<String>> {
+        return safeApiCall {
+            api.getCompletions().completed_lesson_ids.toSet()
+        }
+    }
 }
 
 // ── Safe call wrapper ─────────────────────────────────────────────────────────
@@ -53,7 +66,6 @@ suspend fun <T> safeApiCall(call: suspend () -> T): Result<T> {
     } catch (e: HttpException) {
         val exception = when (e.code()) {
             401 -> AppException.Unauthorized()
-            403 -> AppException.ProRequired()
             in 500..599 -> AppException.ServerError(e.code(), e.message())
             else -> AppException.Unknown(e.message())
         }

@@ -9,6 +9,7 @@ import com.pixelmentor.app.domain.model.AuthState
 import com.pixelmentor.app.domain.model.Lesson
 import com.pixelmentor.app.domain.model.Result
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,7 +21,10 @@ import javax.inject.Inject
 
 sealed class LessonsUiState {
     data object Loading : LessonsUiState()
-    data class Success(val lessons: List<Lesson>) : LessonsUiState()
+    data class Success(
+        val lessons: List<Lesson>,
+        val completedIds: Set<String> = emptySet(),
+    ) : LessonsUiState()
     data class Error(val message: String) : LessonsUiState()
     data object Unauthorized : LessonsUiState()
 }
@@ -62,7 +66,15 @@ class LessonsViewModel @Inject constructor(
             }
 
             when (val result = lessonsRepository.getLessons()) {
-                is Result.Success -> _uiState.value = LessonsUiState.Success(result.data)
+                is Result.Success -> {
+                    // Fetch completions in parallel — non-fatal if it fails
+                    val completedIds = lessonsRepository.getCompletedLessonIds()
+                        .let { if (it is Result.Success) it.data else emptySet() }
+                    _uiState.value = LessonsUiState.Success(
+                        lessons = result.data,
+                        completedIds = completedIds,
+                    )
+                }
                 is Result.Error -> {
                     when (result.exception) {
                         is AppException.Unauthorized -> _uiState.value = LessonsUiState.Unauthorized

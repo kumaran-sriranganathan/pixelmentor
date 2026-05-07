@@ -33,6 +33,8 @@ fun LessonDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val expandedContent by viewModel.expandedContent.collectAsState()
     val isLoadingContent by viewModel.isLoadingContent.collectAsState()
+    val isCompleted by viewModel.isCompleted.collectAsState()
+    val isMarkingComplete by viewModel.isMarkingComplete.collectAsState()
 
     Scaffold(
         topBar = {
@@ -107,6 +109,9 @@ fun LessonDetailScreen(
                     lesson = state.lesson,
                     expandedContent = expandedContent,
                     isLoadingContent = isLoadingContent,
+                    isCompleted = isCompleted,
+                    isMarkingComplete = isMarkingComplete,
+                    onMarkComplete = viewModel::markComplete,
                     modifier = Modifier.padding(padding)
                 )
             }
@@ -123,6 +128,9 @@ private fun LessonContent(
     lesson: LessonDetail,
     expandedContent: String?,
     isLoadingContent: Boolean,
+    isCompleted: Boolean,
+    isMarkingComplete: Boolean,
+    onMarkComplete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -187,6 +195,13 @@ private fun LessonContent(
                     LessonContentBody(content = lesson.content)
                 }
             }
+
+            // ── Mark as Complete button ───────────────────────────────────
+            LessonCompleteButton(
+                isCompleted = isCompleted,
+                isMarkingComplete = isMarkingComplete,
+                onMarkComplete = onMarkComplete,
+            )
 
             Spacer(Modifier.height(32.dp))
         }
@@ -443,6 +458,76 @@ private fun LessonContentBody(content: String) {
                         lineHeight = 24.sp
                     )
                 }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mark as Complete button
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun LessonCompleteButton(
+    isCompleted: Boolean,
+    isMarkingComplete: Boolean,
+    onMarkComplete: () -> Unit,
+) {
+    if (isCompleted) {
+        // Completed state — green confirmation row, no button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF22C55E).copy(alpha = 0.12f))
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = Color(0xFF22C55E),
+                modifier = Modifier.size(22.dp),
+            )
+            Text(
+                text = "Lesson completed!",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF22C55E),
+            )
+        }
+    } else {
+        Button(
+            onClick = onMarkComplete,
+            enabled = !isMarkingComplete,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF22C55E),
+                contentColor = Color.White,
+            ),
+        ) {
+            if (isMarkingComplete) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Mark as Complete",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
     }

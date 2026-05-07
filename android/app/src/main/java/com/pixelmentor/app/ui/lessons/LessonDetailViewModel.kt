@@ -26,12 +26,18 @@ class LessonDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<LessonDetailUiState>(LessonDetailUiState.Loading)
     val uiState: StateFlow<LessonDetailUiState> = _uiState.asStateFlow()
 
-    // Tracks whether expanded AI content has been loaded
     private val _expandedContent = MutableStateFlow<String?>(null)
     val expandedContent: StateFlow<String?> = _expandedContent.asStateFlow()
 
     private val _isLoadingContent = MutableStateFlow(false)
     val isLoadingContent: StateFlow<Boolean> = _isLoadingContent.asStateFlow()
+
+    // ── Completion state ──────────────────────────────────────────────────────
+    private val _isCompleted = MutableStateFlow(false)
+    val isCompleted: StateFlow<Boolean> = _isCompleted.asStateFlow()
+
+    private val _isMarkingComplete = MutableStateFlow(false)
+    val isMarkingComplete: StateFlow<Boolean> = _isMarkingComplete.asStateFlow()
 
     init {
         loadLesson()
@@ -47,8 +53,8 @@ class LessonDetailViewModel @Inject constructor(
                         _uiState.value = LessonDetailUiState.ProRequired
                     } else {
                         _uiState.value = LessonDetailUiState.Success(lesson)
-                        // Auto-load expanded content after lesson metadata loads
                         loadExpandedContent(lesson)
+                        checkCompletion()
                     }
                 }
                 is Result.Error -> {
@@ -67,8 +73,6 @@ class LessonDetailViewModel @Inject constructor(
                 is Result.Success -> _expandedContent.value = result.data
                 is Result.Error -> {
                     if (result.exception is AppException.ProRequired) {
-                        // Backend rejected — show paywall (should not normally reach here
-                        // since the metadata check already gates this, but defensive)
                         _uiState.value = LessonDetailUiState.ProRequired
                     } else {
                         _expandedContent.value = lesson.content
@@ -76,6 +80,27 @@ class LessonDetailViewModel @Inject constructor(
                 }
             }
             _isLoadingContent.value = false
+        }
+    }
+
+    private fun checkCompletion() {
+        viewModelScope.launch {
+            when (val result = repository.getCompletedLessonIds()) {
+                is Result.Success -> _isCompleted.value = lessonId in result.data
+                is Result.Error -> { /* non-fatal */ }
+            }
+        }
+    }
+
+    fun markComplete() {
+        if (_isCompleted.value || _isMarkingComplete.value) return
+        viewModelScope.launch {
+            _isMarkingComplete.value = true
+            when (repository.markLessonComplete(lessonId)) {
+                is Result.Success -> _isCompleted.value = true
+                is Result.Error -> { /* non-fatal */ }
+            }
+            _isMarkingComplete.value = false
         }
     }
 }

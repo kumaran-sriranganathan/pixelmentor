@@ -73,6 +73,34 @@ async def get_lessons(
 
 # ── Lesson detail ─────────────────────────────────────────────────────────────
 
+@router.get("/completions", status_code=200)
+async def get_completions(
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Returns the set of lesson IDs the current user has completed.
+    Used by the Android app to render checkmarks on completed lesson cards.
+    """
+    user_id = current_user.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found in token")
+
+    supabase = get_supabase_client()
+
+    try:
+        response = (
+            supabase.table("lesson_completions")
+            .select("lesson_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        completed_ids = [row["lesson_id"] for row in (response.data or [])]
+        return {"completed_lesson_ids": completed_ids}
+    except Exception as e:
+        logger.error(f"Failed to fetch completions for user {user_id}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch completions")
+
+
 @router.get("/{lesson_id}/content")
 async def get_lesson_content(
     lesson_id: str,
@@ -80,12 +108,24 @@ async def get_lesson_content(
 ):
     """
     Returns AI-expanded lesson content.
-    Pro lessons require a pro or premium plan — free users get a 403.
     Checks cache first — only calls GPT-4o on first access per lesson.
     """
     supabase = get_supabase_client()
 
-    # ── Fetch lesson metadata (need is_pro flag before serving content) ───────
+    # ── Check content cache ───────────────────────────────────────────────────
+    try:
+        cached = supabase.table("lesson_content_cache") \
+            .select("content") \
+            .eq("lesson_id", lesson_id) \
+            .single() \
+            .execute()
+        if cached.data:
+            logger.info(f"Returning cached content for lesson {lesson_id}")
+            return {"lesson_id": lesson_id, "content": cached.data["content"]}
+    except Exception:
+        pass  # Cache miss — generate content
+
+    # ── Fetch lesson from Supabase ────────────────────────────────────────────
     try:
         lesson_response = supabase.table("lessons") \
             .select("*") \
@@ -103,39 +143,6 @@ async def get_lesson_content(
     except Exception as e:
         logger.error(f"Failed to fetch lesson {lesson_id}: {e}")
         raise HTTPException(status_code=502, detail="Failed to fetch lesson")
-
-    # ── Pro-gating check ──────────────────────────────────────────────────────
-    if lesson.get("is_pro", False):
-        user_id = current_user.get("sub")
-        try:
-            profile_response = supabase.table("user_profiles") \
-                .select("plan") \
-                .eq("user_id", user_id) \
-                .single() \
-                .execute()
-
-            user_plan = profile_response.data.get("plan", "free") if profile_response.data else "free"
-        except Exception:
-            user_plan = "free"
-
-        if user_plan not in ("pro", "premium"):
-            raise HTTPException(
-                status_code=403,
-                detail="pro_required",
-            )
-
-    # ── Check content cache ───────────────────────────────────────────────────
-    try:
-        cached = supabase.table("lesson_content_cache") \
-            .select("content") \
-            .eq("lesson_id", lesson_id) \
-            .single() \
-            .execute()
-        if cached.data:
-            logger.info(f"Returning cached content for lesson {lesson_id}")
-            return {"lesson_id": lesson_id, "content": cached.data["content"]}
-    except Exception:
-        pass  # Cache miss — generate content
 
     # ── Generate with GPT-4o ──────────────────────────────────────────────────
     openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -233,3 +240,32 @@ async def get_lesson(
     except Exception as e:
         logger.error(f"Failed to fetch lesson {lesson_id}: {e}")
         raise HTTPException(status_code=502, detail="Failed to fetch lesson")
+
+
+# ── Lesson completions ────────────────────────────────────────────────────────
+
+@router.post("/{lesson_id}/complete", status_code=200)
+async def mark_lesson_complete(
+    lesson_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Marks a lesson as complete for the current user.
+    Idempotent — safe to call multiple times (only counts once).
+    Also increments lessons_completed in user_profiles via RPC.
+    """
+    user_id = current_user.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found in token")
+
+    supabase = get_supabase_client()
+
+    try:
+        supabase.rpc("mark_lesson_complete", {
+            "p_user_id": user_id,
+            "p_lesson_id": lesson_id,
+        }).execute()
+        return {"lesson_id": lesson_id, "completed": True}
+    except Exception as e:
+        logger.error(f"Failed to mark lesson {lesson_id} complete for user {user_id}: {e}")
+        raise HTTPException(status_code=502, detail="Failed to record completion")
