@@ -24,8 +24,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pixelmentor.app.domain.model.AuthState
-import io.github.jan.supabase.composeauth.composable.rememberSignInWithGoogle
-import io.github.jan.supabase.composeauth.composeAuth
+import io.github.jan.supabase.compose.auth.ComposeAuth
+import io.github.jan.supabase.compose.auth.composable.rememberSignInWithGoogle
 
 @Composable
 fun LoginScreen(
@@ -41,11 +41,9 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
 
     // Native Google Sign-In via Credential Manager (ComposeAuth)
-    // This shows the native Google account bottom sheet — no browser needed
-    val googleSignInState = viewModel.supabaseClient.composeAuth.rememberSignInWithGoogle(
-        onResult = { result ->
-            viewModel.onGoogleSignInResult(result)
-        }
+    val composeAuth = viewModel.supabaseClient.pluginManager.getPlugin(ComposeAuth)
+    val googleSignInState = composeAuth.rememberSignInWithGoogle(
+        onResult = { result -> viewModel.onGoogleSignInResult(result) }
     )
 
     LaunchedEffect(authState) {

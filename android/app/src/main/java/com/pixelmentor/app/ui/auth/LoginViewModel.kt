@@ -8,7 +8,7 @@ import com.pixelmentor.app.data.auth.SupabaseAuthManager
 import com.pixelmentor.app.domain.model.AuthState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.composeauth.ComposeAuthResult
+import io.github.jan.supabase.compose.auth.composable.NativeSignInResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,11 +39,11 @@ class LoginViewModel @Inject constructor(
     val uiState: StateFlow<LoginUiState> = _uiState
 
     // Called by the ComposeAuth rememberSignInWithGoogle callback
-    fun onGoogleSignInResult(result: ComposeAuthResult) {
+    fun onGoogleSignInResult(result: NativeSignInResult) {
         when (result) {
-            is ComposeAuthResult.Success -> {
-                // Session is already set on the Supabase client by ComposeAuth —
-                // sync it into our AuthRepository so the rest of the app sees it
+            is NativeSignInResult.Success -> {
+                // Session is set on the Supabase client by ComposeAuth —
+                // sync it into AuthRepository so the rest of the app sees it
                 viewModelScope.launch {
                     try {
                         authRepository.restoreSession()
@@ -56,16 +56,22 @@ class LoginViewModel @Inject constructor(
                     }
                 }
             }
-            is ComposeAuthResult.Error -> {
-                Log.e("LoginViewModel", "Google sign in error", result.exception)
+            is NativeSignInResult.Error -> {
+                Log.e("LoginViewModel", "Google sign in error: ${result.message}", result.exception)
                 _uiState.update {
                     LoginUiState.Error(
-                        friendlyAuthError(result.exception, isSignUp = false, isGoogle = true)
+                        result.exception?.let { friendlyAuthError(it, isSignUp = false, isGoogle = true) }
+                            ?: "Google sign-in failed. Please try again or use email instead."
                     )
                 }
             }
-            is ComposeAuthResult.Cancelled -> {
-                // User dismissed the picker — just go back to idle, no error shown
+            is NativeSignInResult.NetworkError -> {
+                _uiState.update {
+                    LoginUiState.Error("No internet connection. Please check your network and try again.")
+                }
+            }
+            is NativeSignInResult.ClosedByUser -> {
+                // User dismissed the picker — go back to idle, no error shown
                 _uiState.update { LoginUiState.Idle }
             }
         }
@@ -100,11 +106,6 @@ class LoginViewModel @Inject constructor(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Error message mapping
-//
-// Supabase GoTrue returns error messages embedded in the exception message
-// string, e.g. "RestException: Invalid login credentials (400)".
-// We match on substrings so we catch them regardless of the surrounding
-// wrapper text the SDK adds.
 // ─────────────────────────────────────────────────────────────────────────────
 
 private fun friendlyAuthError(
@@ -112,113 +113,53 @@ private fun friendlyAuthError(
     isSignUp: Boolean,
     isGoogle: Boolean = false,
 ): String {
-    // Log the raw message for debugging — never shown to users
     val raw = e.message?.lowercase() ?: ""
 
-    // ── Network / connectivity ────────────────────────────────────────────────
     if (e is java.net.UnknownHostException ||
         e is java.net.ConnectException ||
         raw.contains("unable to resolve host") ||
-        raw.contains("failed to connect") ||
-        raw.contains("no route to host")
-    ) {
-        return "No internet connection. Please check your network and try again."
-    }
+        raw.contains("failed to connect")
+    ) return "No internet connection. Please check your network and try again."
 
     if (e is java.net.SocketTimeoutException ||
-        raw.contains("timeout") ||
-        raw.contains("timed out")
-    ) {
-        return "The request timed out. Please check your connection and try again."
-    }
+        raw.contains("timeout") || raw.contains("timed out")
+    ) return "The request timed out. Please check your connection and try again."
 
-    // ── Supabase / GoTrue error messages ─────────────────────────────────────
-    // Wrong credentials (sign-in)
-    if (raw.contains("invalid login credentials") ||
-        raw.contains("invalid_credentials")
-    ) {
+    if (raw.contains("invalid login credentials") || raw.contains("invalid_credentials"))
         return "Incorrect email or password. Please try again."
-    }
 
-    // Email not verified
-    if (raw.contains("email not confirmed") ||
-        raw.contains("email_not_confirmed")
-    ) {
+    if (raw.contains("email not confirmed") || raw.contains("email_not_confirmed"))
         return "Please verify your email address before signing in. Check your inbox for a confirmation link."
-    }
 
-    // Account does not exist
-    if (raw.contains("user not found") ||
-        raw.contains("no user found")
-    ) {
+    if (raw.contains("user not found") || raw.contains("no user found"))
         return "No account found with that email address."
-    }
 
-    // Account already exists (sign-up)
     if (raw.contains("user already registered") ||
         raw.contains("email already registered") ||
-        raw.contains("already been registered") ||
         raw.contains("email_exists")
-    ) {
-        return "An account with this email already exists. Try signing in instead."
-    }
+    ) return "An account with this email already exists. Try signing in instead."
 
-    // Weak password
-    if (raw.contains("password should be at least") ||
-        raw.contains("password is too short") ||
-        raw.contains("weak_password")
-    ) {
+    if (raw.contains("password should be at least") || raw.contains("weak_password"))
         return "Password must be at least 6 characters long."
-    }
 
-    // Invalid email format
     if (raw.contains("unable to validate email") ||
         raw.contains("invalid email") ||
-        raw.contains("email_address_invalid") ||
         raw.contains("email_invalid")
-    ) {
-        return "Please enter a valid email address."
-    }
+    ) return "Please enter a valid email address."
 
-    // Rate limited
     if (raw.contains("too many requests") ||
-        raw.contains("over_email_send_rate_limit") ||
         raw.contains("rate limit") ||
         raw.contains("429")
-    ) {
-        return "Too many attempts. Please wait a moment and try again."
-    }
+    ) return "Too many attempts. Please wait a moment and try again."
 
-    // Sign-ups disabled on this project
-    if (raw.contains("signup_disabled") ||
-        raw.contains("sign ups are disabled") ||
-        raw.contains("signups not allowed")
-    ) {
+    if (raw.contains("signup_disabled") || raw.contains("signups not allowed"))
         return "New account registration is currently unavailable. Please try again later."
-    }
 
-    // Captcha required (Supabase hCaptcha)
-    if (raw.contains("captcha") || raw.contains("hcaptcha")) {
-        return "Verification required. Please try again."
-    }
-
-    // Session expired / token issue (shouldn't normally surface on login, but defensive)
-    if (raw.contains("token expired") ||
-        raw.contains("jwt expired") ||
-        raw.contains("session_expired")
-    ) {
-        return "Your session has expired. Please sign in again."
-    }
-
-    // Google-specific fallback
-    if (isGoogle) {
+    if (isGoogle)
         return "Google sign-in failed. Please try again or use email instead."
-    }
 
-    // ── Generic fallback — never expose the raw SDK message ──────────────────
-    return if (isSignUp) {
+    return if (isSignUp)
         "Couldn't create your account. Please check your details and try again."
-    } else {
+    else
         "Sign in failed. Please check your email and password and try again."
-    }
 }
