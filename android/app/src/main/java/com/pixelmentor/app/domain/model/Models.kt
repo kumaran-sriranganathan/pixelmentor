@@ -24,6 +24,7 @@ data class Lesson(
     val durationMinutes: Int,
     val skillLevel: SkillLevel,
     val thumbnailUrl: String = "",
+    val isPro: Boolean = false,
 )
 
 enum class SkillLevel(val value: String) {
@@ -69,6 +70,7 @@ sealed class AppException(message: String) : Exception(message) {
     data class TokenExpired(override val message: String = "Token expired") : AppException(message)
     data class TokenInvalid(override val message: String = "Token invalid") : AppException(message)
     data class Unauthorized(override val message: String = "Unauthorized") : AppException(message)
+    data class ProRequired(override val message: String = "Pro subscription required") : AppException(message)
     data class NetworkError(override val message: String) : AppException(message)
     data class ServerError(val code: Int, override val message: String) : AppException(message)
     data class Unknown(override val message: String = "Unknown error") : AppException(message)

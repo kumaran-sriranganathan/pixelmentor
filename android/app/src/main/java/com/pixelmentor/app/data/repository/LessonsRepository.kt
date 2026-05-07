@@ -53,6 +53,7 @@ suspend fun <T> safeApiCall(call: suspend () -> T): Result<T> {
     } catch (e: HttpException) {
         val exception = when (e.code()) {
             401 -> AppException.Unauthorized()
+            403 -> AppException.ProRequired()
             in 500..599 -> AppException.ServerError(e.code(), e.message())
             else -> AppException.Unknown(e.message())
         }

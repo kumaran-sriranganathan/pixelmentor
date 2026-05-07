@@ -72,6 +72,7 @@ data class LessonDto(
         durationMinutes = duration_minutes,
         skillLevel = SkillLevel.from(difficulty),
         thumbnailUrl = "",
+        isPro = is_pro,
     )
 }
 

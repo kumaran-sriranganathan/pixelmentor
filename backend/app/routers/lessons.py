@@ -80,24 +80,12 @@ async def get_lesson_content(
 ):
     """
     Returns AI-expanded lesson content.
+    Pro lessons require a pro or premium plan — free users get a 403.
     Checks cache first — only calls GPT-4o on first access per lesson.
     """
     supabase = get_supabase_client()
 
-    # ── Check content cache ───────────────────────────────────────────────────
-    try:
-        cached = supabase.table("lesson_content_cache") \
-            .select("content") \
-            .eq("lesson_id", lesson_id) \
-            .single() \
-            .execute()
-        if cached.data:
-            logger.info(f"Returning cached content for lesson {lesson_id}")
-            return {"lesson_id": lesson_id, "content": cached.data["content"]}
-    except Exception:
-        pass  # Cache miss — generate content
-
-    # ── Fetch lesson from Supabase ────────────────────────────────────────────
+    # ── Fetch lesson metadata (need is_pro flag before serving content) ───────
     try:
         lesson_response = supabase.table("lessons") \
             .select("*") \
@@ -115,6 +103,39 @@ async def get_lesson_content(
     except Exception as e:
         logger.error(f"Failed to fetch lesson {lesson_id}: {e}")
         raise HTTPException(status_code=502, detail="Failed to fetch lesson")
+
+    # ── Pro-gating check ──────────────────────────────────────────────────────
+    if lesson.get("is_pro", False):
+        user_id = current_user.get("sub")
+        try:
+            profile_response = supabase.table("user_profiles") \
+                .select("plan") \
+                .eq("user_id", user_id) \
+                .single() \
+                .execute()
+
+            user_plan = profile_response.data.get("plan", "free") if profile_response.data else "free"
+        except Exception:
+            user_plan = "free"
+
+        if user_plan not in ("pro", "premium"):
+            raise HTTPException(
+                status_code=403,
+                detail="pro_required",
+            )
+
+    # ── Check content cache ───────────────────────────────────────────────────
+    try:
+        cached = supabase.table("lesson_content_cache") \
+            .select("content") \
+            .eq("lesson_id", lesson_id) \
+            .single() \
+            .execute()
+        if cached.data:
+            logger.info(f"Returning cached content for lesson {lesson_id}")
+            return {"lesson_id": lesson_id, "content": cached.data["content"]}
+    except Exception:
+        pass  # Cache miss — generate content
 
     # ── Generate with GPT-4o ──────────────────────────────────────────────────
     openai_client = AsyncOpenAI(api_key=settings.openai_api_key)

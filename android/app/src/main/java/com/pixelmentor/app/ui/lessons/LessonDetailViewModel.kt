@@ -65,7 +65,15 @@ class LessonDetailViewModel @Inject constructor(
             _isLoadingContent.value = true
             when (val result = repository.getLessonContent(lessonId)) {
                 is Result.Success -> _expandedContent.value = result.data
-                is Result.Error -> _expandedContent.value = lesson.content
+                is Result.Error -> {
+                    if (result.exception is AppException.ProRequired) {
+                        // Backend rejected — show paywall (should not normally reach here
+                        // since the metadata check already gates this, but defensive)
+                        _uiState.value = LessonDetailUiState.ProRequired
+                    } else {
+                        _expandedContent.value = lesson.content
+                    }
+                }
             }
             _isLoadingContent.value = false
         }
