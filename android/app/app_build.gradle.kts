@@ -26,7 +26,7 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNldmlrZ3F5ZmZ6aWxqZnRxYWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwOTMwODcsImV4cCI6MjA5MDY2OTA4N30.fY4Xsb49ieK8SnUYoulk_MJVfKRz8XKlnZtc9olWCNE\"")
         // Replace YOUR_WEB_CLIENT_ID with the Web Client ID from Google Cloud Console
         // It looks like: 123456789-abcdefgh.apps.googleusercontent.com
-        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"428062365676-5jkvv6l66k6juama9edhl10as6jido35.apps.googleusercontent.com\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"YOUR_WEB_CLIENT_ID\"")
     }
 
     buildTypes {
@@ -96,7 +96,6 @@ dependencies {
     implementation(platform("io.github.jan-tennert.supabase:bom:3.1.4"))
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.github.jan-tennert.supabase:compose-auth")
-    implementation("io.github.jan-tennert.supabase:compose-auth-ui")
     implementation("io.ktor:ktor-client-android:3.1.2")
 
     // Google Sign-In via Credential Manager

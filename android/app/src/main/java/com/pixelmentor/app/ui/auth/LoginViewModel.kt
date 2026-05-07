@@ -8,7 +8,7 @@ import com.pixelmentor.app.data.auth.SupabaseAuthManager
 import com.pixelmentor.app.domain.model.AuthState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.compose.auth.ComposeAuthResult
+import io.github.jan.supabase.composeauth.ComposeAuthResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

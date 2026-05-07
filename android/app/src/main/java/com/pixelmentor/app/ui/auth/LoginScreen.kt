@@ -24,8 +24,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pixelmentor.app.domain.model.AuthState
-import io.github.jan.supabase.compose.auth.composable.rememberSignInWithGoogle
-import io.github.jan.supabase.compose.auth.composeAuth
+import io.github.jan.supabase.composeauth.composable.rememberSignInWithGoogle
+import io.github.jan.supabase.composeauth.composeAuth
 
 @Composable
 fun LoginScreen(

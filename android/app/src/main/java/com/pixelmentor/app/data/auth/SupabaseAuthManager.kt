@@ -6,8 +6,8 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
-import io.github.jan.supabase.compose.auth.ComposeAuth
-import io.github.jan.supabase.compose.auth.googleNativeLogin
+import io.github.jan.supabase.composeauth.ComposeAuth
+import io.github.jan.supabase.composeauth.googleNativeLogin
 import io.github.jan.supabase.createSupabaseClient
 import javax.inject.Inject
 import javax.inject.Singleton
