@@ -166,8 +166,13 @@ class TestGetLesson:
 
     def test_returns_lesson_fields(self, client: TestClient) -> None:
         with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
-            mock_get_client.return_value = _make_supabase_mock(lesson=SAMPLE_LESSON_DETAIL)
+            mock_supabase = _make_supabase_mock(lesson=SAMPLE_LESSON_DETAIL)
+            single_response = MagicMock()
+            single_response.data = SAMPLE_LESSON_DETAIL
+            mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = single_response
+            mock_get_client.return_value = mock_supabase
             resp = client.get("/api/v1/lessons/lesson-001")
+        assert resp.status_code == 200
         body = resp.json()
         assert body["id"] == "lesson-001"
         assert "content" in body
