@@ -26,7 +26,7 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNldmlrZ3F5ZmZ6aWxqZnRxYWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwOTMwODcsImV4cCI6MjA5MDY2OTA4N30.fY4Xsb49ieK8SnUYoulk_MJVfKRz8XKlnZtc9olWCNE\"")
         // ⚠️ Replace with your Web Client ID from Google Cloud Console
         // Format: 123456789-abcdefghijklmnop.apps.googleusercontent.com
-        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"YOUR_WEB_CLIENT_ID_HERE\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"428062365676-5jkvv6l66k6juama9edhl10as6jido35.apps.googleusercontent.com\"")
     }
 
     buildTypes {
