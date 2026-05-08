@@ -231,7 +231,7 @@ fun LoginScreen(
 
                             // Google button
                             OutlinedButton(
-                                onClick = { viewModel.signInWithGoogle(context) },
+                                onClick = { android.widget.Toast.makeText(context, "Google Sign-In coming soon", android.widget.Toast.LENGTH_SHORT).show() },
                                 enabled = uiState !is LoginUiState.SigningIn,
                                 modifier = Modifier
                                     .fillMaxWidth()

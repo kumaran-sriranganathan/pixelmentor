@@ -1,11 +1,9 @@
 package com.pixelmentor.app.ui.auth
 
-import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pixelmentor.app.data.auth.AuthRepository
-import com.pixelmentor.app.data.auth.GoogleSignInResult
 import com.pixelmentor.app.domain.model.AuthState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,25 +30,6 @@ class LoginViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
     val uiState: StateFlow<LoginUiState> = _uiState
-
-    fun signInWithGoogle(context: Context) {
-        viewModelScope.launch {
-            _uiState.update { LoginUiState.SigningIn }
-            when (val result = authRepository.signInWithGoogle(context)) {
-                is GoogleSignInResult.Success -> _uiState.update { LoginUiState.Idle }
-                is GoogleSignInResult.Cancelled -> _uiState.update { LoginUiState.Idle }
-                is GoogleSignInResult.Error -> {
-                    Log.e("LoginViewModel", "Google sign-in error: ${result.message}", result.cause)
-                    _uiState.update {
-                        LoginUiState.Error(
-                            result.cause?.let { friendlyAuthError(it, isSignUp = false, isGoogle = true) }
-                                ?: "Google sign-in failed. Please try again or use email instead."
-                        )
-                    }
-                }
-            }
-        }
-    }
 
     fun signInWithEmail(email: String, password: String) {
         viewModelScope.launch {
@@ -83,11 +62,7 @@ class LoginViewModel @Inject constructor(
 // Error message mapping
 // ─────────────────────────────────────────────────────────────────────────────
 
-private fun friendlyAuthError(
-    e: Exception,
-    isSignUp: Boolean,
-    isGoogle: Boolean = false,
-): String {
+private fun friendlyAuthError(e: Exception, isSignUp: Boolean): String {
     val raw = e.message?.lowercase() ?: ""
 
     if (e is java.net.UnknownHostException ||
@@ -129,9 +104,6 @@ private fun friendlyAuthError(
 
     if (raw.contains("signup_disabled") || raw.contains("signups not allowed"))
         return "New account registration is currently unavailable. Please try again later."
-
-    if (isGoogle)
-        return "Google sign-in failed. Please try again or use email instead."
 
     return if (isSignUp)
         "Couldn't create your account. Please check your details and try again."

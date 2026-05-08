@@ -98,10 +98,11 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.ktor:ktor-client-android:3.1.2")
 
-    // Google Sign-In (Credential Manager) — pinned directly to avoid version catalog resolution issues
-    implementation("androidx.credentials:credentials:1.3.0")
-    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
-    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    // Google Sign-In via Credential Manager — re-enable when network access to
+    // maven.google.com is available for these artifacts:
+    // implementation("androidx.credentials:credentials:1.2.2")
+    // implementation("androidx.credentials:credentials-play-services-auth:1.2.2")
+    // implementation("com.google.android.libraries.identity.googleid:googleid:1.1.0")
 
     // DataStore
     implementation(libs.datastore.preferences)

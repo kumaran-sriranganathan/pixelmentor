@@ -1,7 +1,5 @@
 package com.pixelmentor.app.data.auth
 
-import com.pixelmentor.app.data.auth.GoogleSignInResult
-import com.pixelmentor.app.data.auth.SupabaseAuthManager
 import com.pixelmentor.app.domain.model.AuthState
 import com.pixelmentor.app.domain.model.AuthUser
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,17 +30,6 @@ class AuthRepository @Inject constructor(
     suspend fun signInWithEmail(email: String, password: String) {
         val user = supabaseAuthManager.signInWithEmail(email, password)
         _authState.value = AuthState.Authenticated(user)
-    }
-
-    suspend fun signInWithGoogle(context: android.content.Context): GoogleSignInResult {
-        val result = supabaseAuthManager.signInWithGoogle(context)
-        if (result is GoogleSignInResult.Success) {
-            val user = supabaseAuthManager.getCurrentUser()
-            if (user != null) {
-                _authState.value = AuthState.Authenticated(user)
-            }
-        }
-        return result
     }
 
     suspend fun signUp(email: String, password: String) {
