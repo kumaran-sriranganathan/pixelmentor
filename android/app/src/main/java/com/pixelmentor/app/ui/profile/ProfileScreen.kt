@@ -27,6 +27,7 @@ import com.pixelmentor.app.domain.model.*
 @Composable
 fun ProfileScreen(
     onSignOut: () -> Unit,
+    onUpgrade: () -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -83,6 +84,7 @@ fun ProfileScreen(
             is ProfileUiState.Success -> {
                 ProfileContent(
                     profile = state.profile,
+                    onUpgrade = onUpgrade,
                     modifier = Modifier.padding(padding)
                 )
             }
@@ -97,6 +99,7 @@ fun ProfileScreen(
 @Composable
 private fun ProfileContent(
     profile: UserProfile,
+    onUpgrade: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -105,21 +108,11 @@ private fun ProfileContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ── Header / avatar ───────────────────────────────────────────────
         ProfileHeader(profile = profile)
-
-        // ── Stats row ─────────────────────────────────────────────────────
         StatsRow(profile = profile)
-
-        // ── Skill level card ──────────────────────────────────────────────
         SkillLevelCard(skillLevel = profile.skillLevel)
-
-        // ── Plan card ─────────────────────────────────────────────────────
-        PlanCard(plan = profile.plan)
-
-        // ── Activity section ──────────────────────────────────────────────
+        PlanCard(plan = profile.plan, onUpgrade = onUpgrade)
         ActivitySection(profile = profile)
-
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -387,7 +380,7 @@ private fun SkillLevelCard(skillLevel: SkillLevel) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun PlanCard(plan: Plan) {
+private fun PlanCard(plan: Plan, onUpgrade: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -446,7 +439,7 @@ private fun PlanCard(plan: Plan) {
             }
             if (plan == Plan.FREE) {
                 FilledTonalButton(
-                    onClick = { /* TODO: navigate to billing */ },
+                    onClick = onUpgrade,
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {

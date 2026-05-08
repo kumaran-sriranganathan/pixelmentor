@@ -16,6 +16,7 @@ import com.pixelmentor.app.ui.lessons.LessonsScreen
 import com.pixelmentor.app.ui.lessons.LessonDetailScreen
 import com.pixelmentor.app.ui.tutor.TutorScreen
 import com.pixelmentor.app.ui.profile.ProfileScreen
+import com.pixelmentor.app.ui.upgrade.UpgradeScreen
 import com.pixelmentor.app.ui.theme.PixelMentorTheme
 import com.pixelmentor.app.ui.navigation.AnalysisRoutes
 import com.pixelmentor.app.ui.navigation.PixelMentorBottomBar
@@ -29,6 +30,7 @@ object Routes {
     const val LESSONS = "lessons"
     const val TUTOR = "tutor"
     const val PROFILE = "profile"
+    const val UPGRADE = "upgrade"
     const val LESSON_DETAIL = "lessons/{lessonId}"
 
     fun lessonDetail(lessonId: String) = "lessons/$lessonId"
@@ -93,8 +95,7 @@ private fun PixelMentorNavHost() {
                 LessonDetailScreen(
                     onBack = { navController.popBackStack() },
                     onUpgrade = {
-                        // TODO: navigate to billing when implemented
-                        navController.popBackStack()
+                        navController.navigate(Routes.UPGRADE)
                     }
                 )
             }
@@ -109,7 +110,16 @@ private fun PixelMentorNavHost() {
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
+                    },
+                    onUpgrade = {
+                        navController.navigate(Routes.UPGRADE)
                     }
+                )
+            }
+
+            composable(Routes.UPGRADE) {
+                UpgradeScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
 
