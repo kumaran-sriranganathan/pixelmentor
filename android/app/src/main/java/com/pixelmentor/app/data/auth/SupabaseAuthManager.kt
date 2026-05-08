@@ -63,12 +63,12 @@ class SupabaseAuthManager @Inject constructor() {
 
             val result = credentialManager.getCredential(context, request)
             val googleCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
-            val idToken = googleCredential.idToken
+            val googleIdToken = googleCredential.idToken
 
             // Exchange the Google ID token with Supabase
             client.auth.signInWith(IDToken) {
                 provider = Google
-                idToken = idToken
+                idToken = googleIdToken
             }
 
             GoogleSignInResult.Success
