@@ -1,14 +1,13 @@
 package com.pixelmentor.app.ui.auth
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pixelmentor.app.data.auth.AuthRepository
-import com.pixelmentor.app.data.auth.SupabaseAuthManager
+import com.pixelmentor.app.data.auth.GoogleSignInResult
 import com.pixelmentor.app.domain.model.AuthState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.compose.auth.composable.NativeSignInResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,11 +25,7 @@ sealed class LoginUiState {
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
-    private val supabaseAuthManager: SupabaseAuthManager,
 ) : ViewModel() {
-
-    // Exposed so LoginScreen can call composeAuth.rememberSignInWithGoogle()
-    val supabaseClient: SupabaseClient get() = supabaseAuthManager.client
 
     val authState: StateFlow<AuthState> = authRepository.authState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AuthState.Loading)
@@ -38,41 +33,21 @@ class LoginViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
     val uiState: StateFlow<LoginUiState> = _uiState
 
-    // Called by the ComposeAuth rememberSignInWithGoogle callback
-    fun onGoogleSignInResult(result: NativeSignInResult) {
-        when (result) {
-            is NativeSignInResult.Success -> {
-                // Session is set on the Supabase client by ComposeAuth —
-                // sync it into AuthRepository so the rest of the app sees it
-                viewModelScope.launch {
-                    try {
-                        authRepository.restoreSession()
-                        _uiState.update { LoginUiState.Idle }
-                    } catch (e: Exception) {
-                        Log.e("LoginViewModel", "Failed to sync Google session", e)
-                        _uiState.update {
-                            LoginUiState.Error(friendlyAuthError(e, isSignUp = false, isGoogle = true))
-                        }
+    fun signInWithGoogle(context: Context) {
+        viewModelScope.launch {
+            _uiState.update { LoginUiState.SigningIn }
+            when (val result = authRepository.signInWithGoogle(context)) {
+                is GoogleSignInResult.Success -> _uiState.update { LoginUiState.Idle }
+                is GoogleSignInResult.Cancelled -> _uiState.update { LoginUiState.Idle }
+                is GoogleSignInResult.Error -> {
+                    Log.e("LoginViewModel", "Google sign-in error: ${result.message}", result.cause)
+                    _uiState.update {
+                        LoginUiState.Error(
+                            result.cause?.let { friendlyAuthError(it, isSignUp = false, isGoogle = true) }
+                                ?: "Google sign-in failed. Please try again or use email instead."
+                        )
                     }
                 }
-            }
-            is NativeSignInResult.Error -> {
-                Log.e("LoginViewModel", "Google sign in error: ${result.message}", result.exception)
-                _uiState.update {
-                    LoginUiState.Error(
-                        result.exception?.let { friendlyAuthError(it, isSignUp = false, isGoogle = true) }
-                            ?: "Google sign-in failed. Please try again or use email instead."
-                    )
-                }
-            }
-            is NativeSignInResult.NetworkError -> {
-                _uiState.update {
-                    LoginUiState.Error("No internet connection. Please check your network and try again.")
-                }
-            }
-            is NativeSignInResult.ClosedByUser -> {
-                // User dismissed the picker — go back to idle, no error shown
-                _uiState.update { LoginUiState.Idle }
             }
         }
     }

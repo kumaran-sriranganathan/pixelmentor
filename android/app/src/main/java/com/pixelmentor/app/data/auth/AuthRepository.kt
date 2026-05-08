@@ -1,5 +1,7 @@
 package com.pixelmentor.app.data.auth
 
+import com.pixelmentor.app.data.auth.GoogleSignInResult
+import com.pixelmentor.app.data.auth.SupabaseAuthManager
 import com.pixelmentor.app.domain.model.AuthState
 import com.pixelmentor.app.domain.model.AuthUser
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,12 +34,15 @@ class AuthRepository @Inject constructor(
         _authState.value = AuthState.Authenticated(user)
     }
 
-    suspend fun signInWithGoogle() {
-        // ComposeAuth sets the session directly on the Supabase client.
-        // We just read it back to update our auth state.
-        val user = supabaseAuthManager.getCurrentUser()
-            ?: error("Google sign-in completed but no session found")
-        _authState.value = AuthState.Authenticated(user)
+    suspend fun signInWithGoogle(context: android.content.Context): GoogleSignInResult {
+        val result = supabaseAuthManager.signInWithGoogle(context)
+        if (result is GoogleSignInResult.Success) {
+            val user = supabaseAuthManager.getCurrentUser()
+            if (user != null) {
+                _authState.value = AuthState.Authenticated(user)
+            }
+        }
+        return result
     }
 
     suspend fun signUp(email: String, password: String) {

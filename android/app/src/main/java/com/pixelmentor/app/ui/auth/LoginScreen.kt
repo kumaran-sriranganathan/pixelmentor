@@ -23,9 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
 import com.pixelmentor.app.domain.model.AuthState
-import io.github.jan.supabase.compose.auth.ComposeAuth
-import io.github.jan.supabase.compose.auth.composable.rememberSignInWithGoogle
 
 @Composable
 fun LoginScreen(
@@ -34,17 +33,12 @@ fun LoginScreen(
 ) {
     val authState by viewModel.authState.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isSignUp by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
-
-    // Native Google Sign-In via Credential Manager (ComposeAuth)
-    val composeAuth = viewModel.supabaseClient.pluginManager.getPlugin(ComposeAuth)
-    val googleSignInState = composeAuth.rememberSignInWithGoogle(
-        onResult = { result -> viewModel.onGoogleSignInResult(result) }
-    )
 
     LaunchedEffect(authState) {
         if (authState is AuthState.Authenticated) onAuthenticated()
@@ -237,7 +231,7 @@ fun LoginScreen(
 
                             // Google button
                             OutlinedButton(
-                                onClick = { googleSignInState.startFlow() },
+                                onClick = { viewModel.signInWithGoogle(context) },
                                 enabled = uiState !is LoginUiState.SigningIn,
                                 modifier = Modifier
                                     .fillMaxWidth()
