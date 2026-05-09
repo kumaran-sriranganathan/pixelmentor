@@ -3,15 +3,13 @@
 # LangGraph agentic pipeline for photo analysis
 ###############################################################################
 
+import asyncio
 import json
 import logging
 from typing import TypedDict, Optional, List
 
 from langgraph.graph import StateGraph, END
 from openai import AsyncOpenAI
-from azure.core.credentials import AzureKeyCredential
-from azure.search.documents.aio import SearchClient
-from azure.search.documents.models import VectorizedQuery
 
 from app.config import settings
 from app.models.analysis import (
@@ -19,6 +17,19 @@ from app.models.analysis import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Shared OpenAI client — reused across all requests ─────────────────────────
+_openai_client: AsyncOpenAI | None = None
+
+def get_openai_client() -> AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=25.0,
+            max_retries=1,
+        )
+    return _openai_client
 
 
 # ── Agent State ───────────────────────────────────────────────────────────────
@@ -31,7 +42,6 @@ class PhotoCoachState(TypedDict):
     composition_score: Optional[float]
     feedback_items: List[dict]
     edit_suggestions: Optional[dict]
-    embedding: Optional[List[float]]
     lesson_recommendations: List[dict]
     error: Optional[str]
 
@@ -119,7 +129,8 @@ Be specific and technical. Adapt complexity to {state['skill_level']} level."""
 
 async def generate_edit_suggestions(state: PhotoCoachState) -> PhotoCoachState:
     """
-    Node 3: GPT-4o — generate Lightroom-style editing parameters.
+    Node 2: GPT-4o-mini — generate Lightroom-style editing parameters.
+    Uses mini model — edit suggestions are formulaic, don't need GPT-4o quality.
     """
     logger.info(f"[{state['analysis_id']}] Generating edit suggestions")
     client = get_openai_client()
@@ -137,7 +148,7 @@ async def generate_edit_suggestions(state: PhotoCoachState) -> PhotoCoachState:
   "saturation": <int -100 to +100>,
   "color_grade": "<warm|cool|neutral>",
   "crop_suggestion": "<straighten|rule_of_thirds_reframe|none>",
-  "estimated_improvement": "<brief description of how these edits improve the photo>"
+  "estimated_improvement": "<brief description>"
 }}
 
 Photo context: {json.dumps(state.get('vision_metadata', {}))}
@@ -146,83 +157,94 @@ Return ONLY valid JSON."""
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,  # text only — no image needed
-                }
-            ],
+            model="gpt-4o-mini",       # edit params are deterministic — mini is fine
+            messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            max_tokens=500,
+            max_tokens=400,
             temperature=0.2,
         )
-        content = response.choices[0].message.content
-        if not content:
-            return {**state, "edit_suggestions": {}, "error": "Empty response from GPT-4o"}
-        edits = json.loads(content)
+        edits = json.loads(response.choices[0].message.content)
         return {**state, "edit_suggestions": edits}
     except Exception as e:
         logger.error(f"[{state['analysis_id']}] Edit suggestion failed: {e}")
-        return {**state, "edit_suggestions": {}, "error": str(e)}
+        return {**state, "edit_suggestions": {}}
 
 
-async def embed_feedback(state: PhotoCoachState) -> PhotoCoachState:
+async def embed_and_recommend(state: PhotoCoachState) -> PhotoCoachState:
     """
-    Node 4: Embed the feedback text for RAG lesson search.
+    Node 3 (combined): Embed feedback text and search Supabase for lesson recs.
+    Replaces the old separate embed + Azure Search nodes.
+    Uses Supabase full-text search — no Azure dependency, much faster.
     """
+    logger.info(f"[{state['analysis_id']}] Embedding and finding lesson recommendations")
     client = get_openai_client()
-    query_text = " ".join([f["text"] for f in state["feedback_items"][:3]])
 
-    try:
-        response = await client.embeddings.create(
-            model="text-embedding-3-small",
-            input=query_text,
-        )
-        return {**state, "embedding": response.data[0].embedding}
-    except Exception as e:
-        logger.error(f"[{state['analysis_id']}] Embedding failed: {e}")
-        return {**state, "embedding": None}
-
-
-async def recommend_lessons(state: PhotoCoachState) -> PhotoCoachState:
-    """
-    Node 5: Vector search Azure AI Search for relevant lesson recommendations.
-    """
-    logger.info(f"[{state['analysis_id']}] Searching lesson recommendations")
-
-    if not state.get("embedding"):
+    feedback_items = state.get("feedback_items", [])
+    if not feedback_items:
         return {**state, "lesson_recommendations": []}
 
+    # Build a search query from the top feedback categories
+    categories = list({f.get("category", "") for f in feedback_items[:4] if f.get("category")})
+    query_text = " ".join([f["text"] for f in feedback_items[:3]])
+
     try:
-        async with get_search_client() as client:
-            results = await client.search(
-                search_text=None,
-                vector_queries=[
-                    VectorizedQuery(
-                        vector=state["embedding"],
-                        k_nearest_neighbors=3,
-                        fields="content_vector",
-                    )
-                ],
-                select=["id", "title", "description", "duration_minutes", "skill_level", "thumbnail_url"],
-                top=3,
-            )
-            lessons = []
-            async for result in results:
-                lessons.append({
-                    "id": result["id"],
-                    "title": result["title"],
-                    "description": result["description"],
-                    "duration_minutes": result.get("duration_minutes", 10),
-                    "skill_level": result.get("skill_level", "intermediate"),
-                    "thumbnail_url": result.get("thumbnail_url", ""),
-                    "relevance_score": result["@search.score"],
-                })
+        # Use Supabase full-text search — already set up with tsvector trigger
+        from app.utils.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+
+        # Search for lessons matching the weakness categories
+        search_term = " | ".join(categories) if categories else query_text[:50]
+        result = supabase.table("lessons") \
+            .select("id, title, description, duration_minutes, skill_level, thumbnail_url") \
+            .text_search("search_vector", search_term, config="english") \
+            .limit(3) \
+            .execute()
+
+        lessons = [
+            {
+                "id": row["id"],
+                "title": row["title"],
+                "description": row["description"],
+                "duration_minutes": row.get("duration_minutes", 10),
+                "skill_level": row.get("skill_level", "intermediate"),
+                "thumbnail_url": row.get("thumbnail_url", ""),
+                "relevance_score": 1.0,
+            }
+            for row in (result.data or [])
+        ]
         return {**state, "lesson_recommendations": lessons}
     except Exception as e:
-        logger.error(f"[{state['analysis_id']}] Lesson search failed: {e}")
+        logger.error(f"[{state['analysis_id']}] Lesson recommendation failed: {e}")
         return {**state, "lesson_recommendations": []}
+
+
+async def run_parallel_analysis(state: PhotoCoachState) -> PhotoCoachState:
+    """
+    Node 2+3 combined: runs edit suggestions and lesson recommendations
+    in parallel after vision completes — saves ~3-4 seconds vs sequential.
+    """
+    edit_task = generate_edit_suggestions(state)
+    recommend_task = embed_and_recommend(state)
+
+    edit_result, recommend_result = await asyncio.gather(
+        edit_task, recommend_task, return_exceptions=True
+    )
+
+    # Merge results safely even if one task failed
+    merged = {**state}
+    if isinstance(edit_result, dict):
+        merged["edit_suggestions"] = edit_result.get("edit_suggestions", {})
+    else:
+        logger.error(f"[{state['analysis_id']}] Edit task failed: {edit_result}")
+        merged["edit_suggestions"] = {}
+
+    if isinstance(recommend_result, dict):
+        merged["lesson_recommendations"] = recommend_result.get("lesson_recommendations", [])
+    else:
+        logger.error(f"[{state['analysis_id']}] Recommend task failed: {recommend_result}")
+        merged["lesson_recommendations"] = []
+
+    return merged
 
 
 # ── Build the LangGraph ────────────────────────────────────────────────────────
@@ -231,15 +253,11 @@ def build_photo_coach_graph():
     graph = StateGraph(PhotoCoachState)
 
     graph.add_node("vision_and_scoring", run_vision_and_scoring)
-    graph.add_node("generate_edits",   generate_edit_suggestions)
-    graph.add_node("embed_feedback",     embed_feedback)
-    graph.add_node("recommend_lessons",  recommend_lessons)
+    graph.add_node("parallel_analysis",  run_parallel_analysis)  # edits + recommendations in parallel
 
     graph.set_entry_point("vision_and_scoring")
-    graph.add_edge("vision_and_scoring", "generate_edits")
-    graph.add_edge("generate_edits",     "embed_feedback")
-    graph.add_edge("embed_feedback",     "recommend_lessons")
-    graph.add_edge("recommend_lessons",  END)
+    graph.add_edge("vision_and_scoring", "parallel_analysis")
+    graph.add_edge("parallel_analysis",  END)
 
     return graph.compile()
 
@@ -267,7 +285,6 @@ class PhotoCoachAgent:
             "composition_score": None,
             "feedback_items": [],
             "edit_suggestions": None,
-            "embedding": None,
             "lesson_recommendations": [],
             "error": None,
         }

@@ -72,6 +72,8 @@ async def add_correlation_id(request: Request, call_next):
     request.state.correlation_id = correlation_id
     response = await call_next(request)
     response.headers["X-Correlation-ID"] = correlation_id
+    # Tell Railway's proxy not to close the connection mid-stream
+    response.headers["X-Accel-Buffering"] = "no"
     return response
 
 
