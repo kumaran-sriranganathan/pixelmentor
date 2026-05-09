@@ -1,5 +1,6 @@
 package com.pixelmentor.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.pixelmentor.app.ui.auth.ForgotPasswordScreen
 import com.pixelmentor.app.ui.auth.LoginScreen
+import com.pixelmentor.app.ui.auth.ResetPasswordScreen
 import com.pixelmentor.app.ui.lessons.LessonsScreen
 import com.pixelmentor.app.ui.lessons.LessonDetailScreen
 import com.pixelmentor.app.ui.tutor.TutorScreen
@@ -31,6 +34,8 @@ object Routes {
     const val TUTOR = "tutor"
     const val PROFILE = "profile"
     const val UPGRADE = "upgrade"
+    const val FORGOT_PASSWORD = "forgot_password"
+    const val RESET_PASSWORD = "reset_password"
     const val LESSON_DETAIL = "lessons/{lessonId}"
 
     fun lessonDetail(lessonId: String) = "lessons/$lessonId"
@@ -40,29 +45,40 @@ object Routes {
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             PixelMentorTheme {
-                PixelMentorNavHost()
+                // Check if launched from a password reset deep link
+                val startRoute = if (intent?.data?.scheme == "io.supabase.pixelmentor") {
+                    Routes.RESET_PASSWORD
+                } else {
+                    Routes.LOGIN
+                }
+                PixelMentorNavHost(startRoute = startRoute)
             }
         }
+    }
+
+    // Handle deep-link when app is already running
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 }
 
 @Composable
-private fun PixelMentorNavHost() {
+private fun PixelMentorNavHost(startRoute: String = Routes.LOGIN) {
     val navController = rememberNavController()
 
     Scaffold(
-        bottomBar = {
-            PixelMentorBottomBar(navController = navController)
-        }
+        bottomBar = { PixelMentorBottomBar(navController = navController) }
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.LOGIN,
+            startDestination = startRoute,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.LOGIN) {
@@ -70,6 +86,25 @@ private fun PixelMentorNavHost() {
                     onAuthenticated = {
                         navController.navigate(Routes.LESSONS) {
                             popUpTo(Routes.LOGIN) { inclusive = true }
+                        }
+                    },
+                    onForgotPassword = {
+                        navController.navigate(Routes.FORGOT_PASSWORD)
+                    }
+                )
+            }
+
+            composable(Routes.FORGOT_PASSWORD) {
+                ForgotPasswordScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.RESET_PASSWORD) {
+                ResetPasswordScreen(
+                    onPasswordReset = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(Routes.RESET_PASSWORD) { inclusive = true }
                         }
                     }
                 )
@@ -82,9 +117,7 @@ private fun PixelMentorNavHost() {
                             popUpTo(Routes.LESSONS) { inclusive = true }
                         }
                     },
-                    onAnalyzePhoto = {
-                        navController.navigate(AnalysisRoutes.PICKER)
-                    },
+                    onAnalyzePhoto = { navController.navigate(AnalysisRoutes.PICKER) },
                     onLessonClick = { lessonId ->
                         navController.navigate(Routes.lessonDetail(lessonId))
                     }
@@ -94,15 +127,11 @@ private fun PixelMentorNavHost() {
             composable(Routes.LESSON_DETAIL) {
                 LessonDetailScreen(
                     onBack = { navController.popBackStack() },
-                    onUpgrade = {
-                        navController.navigate(Routes.UPGRADE)
-                    }
+                    onUpgrade = { navController.navigate(Routes.UPGRADE) }
                 )
             }
 
-            composable(Routes.TUTOR) {
-                TutorScreen()
-            }
+            composable(Routes.TUTOR) { TutorScreen() }
 
             composable(Routes.PROFILE) {
                 ProfileScreen(
@@ -111,16 +140,12 @@ private fun PixelMentorNavHost() {
                             popUpTo(0) { inclusive = true }
                         }
                     },
-                    onUpgrade = {
-                        navController.navigate(Routes.UPGRADE)
-                    }
+                    onUpgrade = { navController.navigate(Routes.UPGRADE) }
                 )
             }
 
             composable(Routes.UPGRADE) {
-                UpgradeScreen(
-                    onBack = { navController.popBackStack() }
-                )
+                UpgradeScreen(onBack = { navController.popBackStack() })
             }
 
             analysisGraph(navController)

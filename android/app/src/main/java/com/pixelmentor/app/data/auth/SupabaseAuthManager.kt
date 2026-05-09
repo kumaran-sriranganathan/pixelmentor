@@ -36,6 +36,27 @@ class SupabaseAuthManager @Inject constructor() {
         return getCurrentUser() ?: error("Sign up succeeded but no user found")
     }
 
+    /**
+     * Sends a password reset email. Supabase emails a link that deep-links back
+     * to io.supabase.pixelmentor://login-callback with a recovery token.
+     */
+    suspend fun sendPasswordResetEmail(email: String) {
+        client.auth.resetPasswordForEmail(
+            email = email,
+            redirectUrl = "io.supabase.pixelmentor://login-callback",
+        )
+    }
+
+    /**
+     * Updates the current user's password. Called after the user taps the reset
+     * link in the email and is returned to the app with an active recovery session.
+     */
+    suspend fun updatePassword(newPassword: String) {
+        client.auth.updateUser {
+            password = newPassword
+        }
+    }
+
     suspend fun getCurrentUser(): AuthUser? {
         val session = client.auth.currentSessionOrNull() ?: return null
         val user = client.auth.currentUserOrNull() ?: return null

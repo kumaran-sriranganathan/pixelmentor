@@ -37,6 +37,17 @@ class AuthRepository @Inject constructor(
         _authState.value = AuthState.Authenticated(user)
     }
 
+    suspend fun sendPasswordResetEmail(email: String) {
+        supabaseAuthManager.sendPasswordResetEmail(email)
+    }
+
+    suspend fun updatePassword(newPassword: String) {
+        supabaseAuthManager.updatePassword(newPassword)
+        // Re-fetch the session so the auth state reflects the updated user
+        val user = supabaseAuthManager.getCurrentUser()
+        if (user != null) _authState.value = AuthState.Authenticated(user)
+    }
+
     suspend fun refreshToken(): String? {
         return try {
             val user = supabaseAuthManager.refreshSession()
