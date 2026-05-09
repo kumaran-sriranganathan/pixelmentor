@@ -46,18 +46,6 @@ class PhotoCoachState(TypedDict):
     error: Optional[str]
 
 
-# ── Azure Clients (async) ─────────────────────────────────────────────────────
-def get_openai_client() -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=settings.openai_api_key)
-
-def get_search_client() -> SearchClient:
-    return SearchClient(
-        endpoint=settings.azure_search_endpoint,
-        index_name=settings.lessons_index,
-        credential=AzureKeyCredential(settings.azure_search_key),
-    )
-
-
 # ── Agent Nodes ────────────────────────────────────────────────────────────────
 async def run_vision_and_scoring(state: PhotoCoachState) -> PhotoCoachState:
     """
