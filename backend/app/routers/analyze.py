@@ -16,12 +16,18 @@ from app.agents.photo_coach import PhotoCoachAgent
 from app.models.analysis import PhotoAnalysisResponse
 from app.middleware.auth import get_current_user
 from app.config import settings
-from app.utils.supabase_client import get_supabase_client
+from app.utils.supabase_client import get_supabase_client, get_supabase_admin
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/heic", "image/webp"}
+CONTENT_TYPE_TO_EXT = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/heic": "heic",
+    "image/webp": "webp",
+}
 MAX_SIZE_BYTES = 20 * 1024 * 1024  # 20MB
 
 
@@ -84,13 +90,29 @@ async def analyze_photo(
     if len(image_data) > MAX_SIZE_BYTES:
         raise HTTPException(status_code=413, detail="Image must be under 20MB")
 
-    analysis_id = str(uuid.uuid4())
     user_id = current_user["sub"]
+
+    # ── Fix 5: Per-user daily rate limit ────────────────────────────────────
+    # Prevents a single user from burning OpenAI budget
+    from app.utils.supabase_client import SupabaseService
+    service = SupabaseService()
+    photos_today = await service.get_photos_analyzed_today(user_id)
+    if photos_today >= settings.max_photos_per_user_per_day:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily photo analysis limit reached ({settings.max_photos_per_user_per_day}/day). Try again tomorrow."
+        )
+
+    analysis_id = str(uuid.uuid4())
+
+    # ── Fix 7: Sanitise blob path — never use user-supplied filename ─────────
+    # Derive extension from validated content_type only — immune to path traversal
+    ext = CONTENT_TYPE_TO_EXT.get(request.content_type, "jpg")
+    blob_path = f"{user_id}/{analysis_id}/photo.{ext}"
 
     logger.info(f"Photo analysis started — analysis_id={analysis_id} user_id={user_id} size={len(image_data)//1024}KB")
 
     # Upload to Cloudflare R2 and get presigned URL for AI
-    blob_path = f"{user_id}/{analysis_id}/{request.filename}"
     presigned_url = await upload_to_r2(image_data, blob_path, request.content_type)
 
     # Run PhotoCoach agent pipeline
@@ -115,12 +137,12 @@ async def analyze_photo(
             "blob_path": blob_path,
         }).execute()
 
-        # Increment photos_analyzed on user profile
-        supabase.rpc("increment_photos_analyzed", {"p_user_id": user_id}).execute()
+        # Privileged RPC — use admin client
+        get_supabase_admin().rpc("increment_photos_analyzed", {"p_user_id": user_id}).execute()
 
     except Exception as e:
         logger.error(f"Failed to save analysis to Supabase: {e}")
-            # Don't fail the request just because persistence failed
+        # Don't fail the request just because persistence failed
 
     logger.info(f"Photo analysis complete — analysis_id={analysis_id} score={result.composition_score}")
 

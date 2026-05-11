@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 
 from app.config import settings
 from app.middleware.auth import get_current_user
-from app.utils.supabase_client import get_supabase_client
+from app.utils.supabase_client import get_supabase_client, get_supabase_admin
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -258,7 +258,7 @@ async def mark_lesson_complete(
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in token")
 
-    supabase = get_supabase_client()
+    supabase = get_supabase_admin()  # RPC uses SECURITY DEFINER
 
     try:
         supabase.rpc("mark_lesson_complete", {

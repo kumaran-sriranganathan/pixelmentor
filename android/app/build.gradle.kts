@@ -1,9 +1,26 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.google.services)
+}
+
+// ── Read secrets from local.properties (dev) or environment variables (CI) ───
+// Never commit local.properties to git.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
+}
+
+fun secret(key: String): String {
+    // CI injects as environment variable; local dev uses local.properties
+    return System.getenv(key)
+        ?: localProps.getProperty(key)
+        ?: error("Missing required secret: $key — add to local.properties or CI environment")
 }
 
 android {
@@ -21,8 +38,11 @@ android {
         buildConfigField("String", "ENTRA_TENANT_ID", "\"260b8d50-600d-47d4-b73c-e094c1674813\"")
         buildConfigField("String", "API_BASE_URL_DEV", "\"https://pixelmentor-production.up.railway.app/\"")
         buildConfigField("String", "API_BASE_URL_PROD", "\"https://pm-prod-api.happyfield-58cc0921.australiaeast.azurecontainerapps.io/\"")
+        // Supabase URL is not sensitive — it's visible in network traffic
         buildConfigField("String", "SUPABASE_URL", "\"https://sevikgqyffziljftqabd.supabase.co\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNldmlrZ3F5ZmZ6aWxqZnRxYWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwOTMwODcsImV4cCI6MjA5MDY2OTA4N30.fY4Xsb49ieK8SnUYoulk_MJVfKRz8XKlnZtc9olWCNE\"")
+        // Secrets — injected from local.properties (dev) or CI environment variables (CI/CD)
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${secret("GOOGLE_WEB_CLIENT_ID")}\"")
     }
 
     buildTypes {

@@ -542,7 +542,7 @@ private fun QuizLoading() {
         ) {
             CircularProgressIndicator()
             Text(
-                "Generating your quiz…",
+                "Loading quiz…",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
