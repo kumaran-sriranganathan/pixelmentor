@@ -20,15 +20,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Setup Azure Monitor if connection string is available
-if settings.app_insights_connection_string:
-    try:
-        from azure.monitor.opentelemetry import configure_azure_monitor
-        configure_azure_monitor(
-            connection_string=settings.app_insights_connection_string
-        )
-        logger.info("Azure Monitor configured")
-    except Exception as e:
-        logger.warning(f"Azure Monitor setup failed: {e}")
+if settings.sentry_dsn:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        traces_sample_rate=0.1,
+        environment=settings.environment,
+    )
+    logger.info("Sentry configured")
 
 
 # ── App Lifecycle ─────────────────────────────────────────────────────────────
@@ -52,12 +51,12 @@ app = FastAPI(
 # ── Middleware ────────────────────────────────────────────────────────────────
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=settings.allowed_hosts,
+    allowed_hosts=settings.effective_allowed_hosts,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins,
+    allow_origins=settings.effective_allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
@@ -73,6 +72,8 @@ async def add_correlation_id(request: Request, call_next):
     request.state.correlation_id = correlation_id
     response = await call_next(request)
     response.headers["X-Correlation-ID"] = correlation_id
+    # Tell Railway's proxy not to close the connection mid-stream
+    response.headers["X-Accel-Buffering"] = "no"
     return response
 
 

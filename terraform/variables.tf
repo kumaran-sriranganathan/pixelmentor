@@ -57,3 +57,24 @@ variable "search_sku" {
   type        = string
   default     = "basic"
 }
+
+variable "entra_tenant_id" {
+  description = "Microsoft Entra External ID tenant ID"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "entra_api_client_id" {
+  description = "PixelMentor API app client ID in Entra External ID"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "entra_android_client_id" {
+  description = "PixelMentor Android app client ID in Entra External ID"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

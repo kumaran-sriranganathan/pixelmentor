@@ -1,78 +1,117 @@
 ###############################################################################
-# middleware/auth.py — Azure AD B2C JWT validation
+# middleware/auth.py — Supabase JWT validation (ES256 / ECC P-256)
+# Fetches public keys dynamically from Supabase JWKS endpoint at startup.
+# Keys are cached in memory — restart to pick up rotated keys.
 ###############################################################################
 
 import logging
-from fastapi import HTTPException, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
+import time
 import httpx
+from fastapi import HTTPException, Request, status
+from jose import jwt, JWTError, ExpiredSignatureError
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-security = HTTPBearer()
 
-JWKS_URL = (
-    f"https://login.microsoftonline.com/{settings.azure_tenant_id}"
-    f"/discovery/v2.0/keys"
-)
+# ── JWKS cache with 24-hour TTL ───────────────────────────────────────────────
+# Keys are refreshed automatically so key rotations don't require a redeploy.
 
-_jwks_cache = None
+_jwks_cache: list[dict] | None = None
+_jwks_fetched_at: float = 0.0
+_JWKS_TTL_SECONDS = 86400  # 24 hours
 
 
-async def get_jwks():
-    global _jwks_cache
-    if _jwks_cache is None:
+async def _get_jwks() -> list[dict]:
+    """Fetch and cache JWKS keys from Supabase. Refreshes every 24 hours."""
+    global _jwks_cache, _jwks_fetched_at
+
+    now = time.monotonic()
+    if _jwks_cache is not None and (now - _jwks_fetched_at) < _JWKS_TTL_SECONDS:
+        return _jwks_cache
+
+    jwks_url = f"{settings.supabase_url}/auth/v1/.well-known/jwks.json"
+    logger.info(f"Fetching JWKS from {jwks_url} (cache {'refresh' if _jwks_cache else 'init'})")
+
+    try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(JWKS_URL)
-            _jwks_cache = response.json()
-    return _jwks_cache
+            response = await client.get(jwks_url, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            _jwks_cache = data.get("keys", [])
+            _jwks_fetched_at = now
+            logger.info(f"JWKS loaded: {len(_jwks_cache)} key(s)")
+            return _jwks_cache
+    except Exception as e:
+        logger.error(f"Failed to fetch JWKS: {e}")
+        # If we have a stale cache, use it rather than failing completely
+        if _jwks_cache:
+            logger.warning("Using stale JWKS cache due to fetch failure")
+            return _jwks_cache
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service unavailable"
+        )
 
+
+# ── Auth middleware ───────────────────────────────────────────────────────────
 
 async def get_current_user(request: Request) -> dict:
     """
-    Validate Azure AD Bearer token.
-    Returns decoded token claims (sub, email, name, etc.)
-    In dev mode, accepts a mock token for local testing.
-    """
-    if settings.environment == "dev":
-        # Allow mock auth in dev — never in prod
-        return {"sub": "dev-user-123", "email": "dev@pixelmentor.com", "name": "Dev User"}
+    Validate Supabase JWT token using dynamically fetched JWKS.
+    Returns decoded token claims (sub, email, etc.)
 
+    401 error codes:
+      token_missing  → no Authorization header
+      token_expired  → valid token, past exp
+      token_invalid  → bad signature / malformed
+    """
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing auth token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "token_missing", "message": "Authorization header required"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     token = auth_header.split(" ")[1]
+    keys = await _get_jwks()
 
-    try:
-        jwks = await get_jwks()
-        payload = jwt.decode(
-            token,
-            jwks,
-            algorithms=["RS256"],
-            audience=settings.azure_client_id,
-        )
-        return payload
-    except JWTError as e:
-        logger.warning(f"JWT validation failed: {e}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    # Try each key in the JWKS until one works
+    last_error = None
+    for jwk in keys:
+        try:
+            payload = jwt.decode(
+                token,
+                jwk,
+                algorithms=[jwk.get("alg", "ES256")],
+                audience="authenticated",
+                options={"verify_aud": True},
+            )
 
+            if not payload.get("sub"):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail={"error": "token_invalid", "message": "Token missing required claims"},
+                )
 
-class AzureADAuthMiddleware:
-    """
-    Middleware that skips auth on public routes (/health, /docs).
-    All other routes require a valid Azure AD token.
-    """
-    PUBLIC_PATHS = {"/health", "/health/ready", "/docs", "/redoc", "/openapi.json"}
+            return payload
 
-    def __init__(self, app):
-        self.app = app
+        except ExpiredSignatureError:
+            logger.info("Expired token rejected")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "token_expired", "message": "Token has expired — refresh and retry"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            path = scope.get("path", "")
-            if path not in self.PUBLIC_PATHS and not path.startswith("/docs"):
-                pass  # Token validated per-endpoint via Depends(get_current_user)
-        await self.app(scope, receive, send)
+        except JWTError as e:
+            last_error = e
+            continue
+
+    logger.warning(f"Invalid token rejected: {last_error}")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"error": "token_invalid", "message": "Token is invalid"},
+        headers={"WWW-Authenticate": "Bearer"},
+    )

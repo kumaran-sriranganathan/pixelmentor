@@ -202,7 +202,9 @@ module "container_apps" {
   identity_id                    = module.security.identity_id
   identity_client_id             = module.security.identity_client_id
   tags                           = local.tags
-
+  entra_tenant_id         = var.entra_tenant_id
+entra_api_client_id     = var.entra_api_client_id
+entra_android_client_id = var.entra_android_client_id
   depends_on = [module.security, module.cosmos, module.storage, module.openai, module.search]
 }
 
