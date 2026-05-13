@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   # ─────────────────────────────────────────────
-  # 1. Backend Tests (must pass before anything)
+  # 1. Backend Tests
+  # Must pass before release builds proceed.
   # ─────────────────────────────────────────────
   backend-tests:
     name: Backend Tests
@@ -41,8 +42,6 @@ jobs:
           SUPABASE_SERVICE_KEY: "mock-service-key"
           SUPABASE_JWT_SECRET: "mock-jwt-secret"
           OPENAI_API_KEY: "mock-openai-key"
-          TYPESENSE_HOST: "mock.typesense.net"
-          TYPESENSE_API_KEY: "mock-typesense-key"
           CLOUDFLARE_ACCOUNT_ID: "mock-account-id"
           R2_ACCESS_KEY_ID: "mock-r2-key"
           R2_SECRET_ACCESS_KEY: "mock-r2-secret"
@@ -60,40 +59,12 @@ jobs:
           path: backend/test-results.xml
 
   # ─────────────────────────────────────────────
-  # 2. Manual Approval Gate
-  # Configure required reviewers in:
-  # GitHub → Settings → Environments → prod
+  # NOTE: Railway prod deployment not configured yet.
+  # Currently running a single Railway environment.
+  # When ready to split dev/prod:
+  #   1. Create a new Railway service for prod
+  #   2. Add RAILWAY_PROD_URL to GitHub secrets
+  #   3. Set ENVIRONMENT=prod, ALLOWED_ORIGINS,
+  #      ALLOWED_HOSTS on the prod Railway service
+  #   4. Re-add the deployment and health check jobs
   # ─────────────────────────────────────────────
-  await-approval:
-    name: Await Manual Approval
-    runs-on: ubuntu-latest
-    environment: prod
-    needs: backend-tests
-
-    steps:
-      - name: Approval granted
-        run: echo "✅ Deployment to prod approved."
-
-  # ─────────────────────────────────────────────
-  # 3. Verify Production Deployment
-  # Railway auto-deploys on push to main branch.
-  # ─────────────────────────────────────────────
-  verify-deployment:
-    name: Verify Prod Deployment
-    runs-on: ubuntu-latest
-    needs: await-approval
-
-    steps:
-      - name: Wait for Railway deployment
-        run: sleep 90
-
-      - name: Health check
-        run: |
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 30 \
-            "${{ secrets.RAILWAY_PROD_URL }}/health")
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "❌ Health check failed with status: ${HTTP_STATUS}"
-            exit 1
-          fi
-          echo "✅ Production deployment healthy"
