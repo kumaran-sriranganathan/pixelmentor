@@ -1,62 +1,85 @@
-###############################################################################
-# config.py — Settings loaded from environment variables
-###############################################################################
+"""
+backend/app/config.py
+"""
 
-from functools import lru_cache
-from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-
-    # App
-    environment: str = "dev"
-    allowed_hosts: List[str] = ["*"]
-    allowed_origins: List[str] = ["http://localhost:3000", "http://10.0.2.2:3000"]
-
-    # Azure OpenAI — defaults allow app to start without crashing; real values needed for AI features
-    azure_openai_endpoint: str = ""
-    azure_openai_api_key: str = ""
-    azure_openai_api_version: str = "2025-01-01"
-    gpt4o_deployment: str = "gpt-4o"
-    embedding_deployment: str = "text-embedding-3-large"
-
-    # Azure AI Vision — optional
-    azure_vision_endpoint: str = ""
-    azure_vision_key: str = ""
-
-    # Cosmos DB
-    cosmos_endpoint: str = ""
-    cosmos_connection_string: str = ""
-    cosmos_database: str = "pixelmentor"
-
-    # Azure Blob Storage
-    storage_connection_string: str = ""
-    storage_account_name: str = ""
-    photos_container: str = "user-photos"
-    processed_container: str = "processed-photos"
-
-    # Azure AI Search
+    # ── Azure AI Search (legacy — kept for migration period) ──────────────────
     azure_search_endpoint: str = ""
     azure_search_key: str = ""
-    lessons_index: str = "photography-lessons"
+    search_index_name: str = "photography-lessons"
 
-    # Azure AD (for token validation)
-    azure_tenant_id: str = ""
-    azure_client_id: str = ""
+    # ── Security ──────────────────────────────────────────────────────────────
+    # Dev: ["*"] is acceptable. Prod: lock to your actual domain/Railway URL.
+    # Set via environment variable: ALLOWED_ORIGINS='["https://pixelmentor.app"]'
+    allowed_hosts: list[str] = ["*"]
+    allowed_origins: list[str] = ["*"]
 
-    # Monitoring
-    app_insights_connection_string: str = ""
-
-    # Rate limiting
+    # ── Rate limiting ─────────────────────────────────────────────────────────
     rate_limit_per_minute: int = 60
-    rate_limit_ai_per_minute: int = 10
+    rate_limit_ai_per_minute: int = 20
+    # Per-user photo analysis limit — prevents runaway OpenAI costs
+    max_photos_per_user_per_day: int = 20
+
+    # ── General ───────────────────────────────────────────────────────────────
+    environment: str = "dev"
+    log_level: str = "INFO"
+
+    # ── Supabase ──────────────────────────────────────────────────────────────
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_service_key: str = ""
+    supabase_jwt_secret: str = ""
+
+    # ── Cloudflare R2 ─────────────────────────────────────────────────────────
+    cloudflare_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket_name: str = "pixelmentor-photos"
+    r2_public_domain: str = ""
+
+    # ── OpenAI ────────────────────────────────────────────────────────────────
+    openai_api_key: str = ""
+
+    # ── Monitoring ────────────────────────────────────────────────────────────
+    sentry_dsn: str = ""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @property
+    def is_prod(self) -> bool:
+        return self.environment == "prod"
+
+    @property
+    def effective_allowed_origins(self) -> list[str]:
+        """
+        In prod, never allow wildcard origins.
+        Raises at startup if prod is misconfigured with wildcard.
+        """
+        if self.is_prod and self.allowed_origins == ["*"]:
+            raise ValueError(
+                "ALLOWED_ORIGINS must be explicitly set in production. "
+                "Set it to your Railway URL, e.g. "
+                "ALLOWED_ORIGINS='[\"https://pixelmentor-production.up.railway.app\"]'"
+            )
+        return self.allowed_origins
+
+    @property
+    def effective_allowed_hosts(self) -> list[str]:
+        """In prod, never allow wildcard hosts."""
+        if self.is_prod and self.allowed_hosts == ["*"]:
+            raise ValueError(
+                "ALLOWED_HOSTS must be explicitly set in production. "
+                "Set it to your Railway domain, e.g. "
+                "ALLOWED_HOSTS='[\"pixelmentor-production.up.railway.app\"]'"
+            )
+        return self.allowed_hosts
 
 
-@lru_cache
+settings = Settings()  # type: ignore[call-arg]  # values come from env
+
+
 def get_settings() -> Settings:
-    return Settings()
-
-
-settings = get_settings()
+    return settings

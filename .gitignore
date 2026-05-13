@@ -22,7 +22,7 @@ dist/
 *.pem
 *.key
 *.pfx
-
+.env
 # Docker
 .dockerignore
 
@@ -37,3 +37,14 @@ Thumbs.db
 
 # Logs
 *.log
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfstate.backup
+
+# Android
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/*.jks

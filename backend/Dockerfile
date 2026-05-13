@@ -34,6 +34,7 @@ RUN groupadd --gid 1001 appgroup \
     && useradd --uid 1001 --gid appgroup --shell /bin/bash --create-home appuser
 
 WORKDIR /app
+# Force rebuild - cache bust 2026-04-21
 
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
@@ -52,11 +53,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run with Gunicorn + Uvicorn workers
-CMD ["gunicorn", "app.main:app", \
-     "--workers", "2", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--bind", "0.0.0.0:8000", \
-     "--timeout", "120", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-", \
-     "--log-level", "info"]
+CMD ["sh", "-c", "gunicorn app.main:app \
+     --workers 2 \
+     --worker-class uvicorn.workers.UvicornWorker \
+     --bind 0.0.0.0:${PORT:-8000} \
+     --timeout 120 \
+     --access-logfile - \
+     --error-logfile - \
+     --log-level info"]

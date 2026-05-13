@@ -45,3 +45,15 @@ output "app_insights_instrumentation_key" {
   value       = module.monitoring.instrumentation_key
   sensitive   = true
 }
+
+output "search_endpoint" {
+  description = "Azure AI Search endpoint"
+  value       = module.search.endpoint
+  sensitive   = true
+}
+
+output "search_key" {
+  description = "Azure AI Search admin key"
+  value       = module.search.primary_key
+  sensitive   = true
+}
