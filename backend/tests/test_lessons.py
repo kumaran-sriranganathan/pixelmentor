@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.middleware.auth import get_current_user
-from app.utils.supabase_client import get_supabase_client
 
 # ---------------------------------------------------------------------------
 # Sample data
@@ -67,26 +66,25 @@ def _make_supabase_mock(lessons=None, lesson=None, count=None):
     """Create a mock Supabase client."""
     mock = MagicMock()
 
-    # Mock for list query
     list_response = MagicMock()
     list_response.data = lessons if lessons is not None else SAMPLE_LESSONS
     list_response.count = count if count is not None else len(SAMPLE_LESSONS)
 
-    # Mock for single lesson query
     detail_response = MagicMock()
     detail_response.data = lesson if lesson is not None else SAMPLE_LESSON_DETAIL
 
-    # Chain the query builder
     mock_query = MagicMock()
     mock_query.select.return_value = mock_query
     mock_query.eq.return_value = mock_query
     mock_query.order.return_value = mock_query
     mock_query.range.return_value = mock_query
     mock_query.single.return_value = mock_query
+    mock_query.limit.return_value = mock_query
     mock_query.text_search.return_value = mock_query
     mock_query.execute.return_value = list_response
 
     mock.table.return_value = mock_query
+    mock.rpc.return_value = mock_query
 
     return mock
 
@@ -98,8 +96,11 @@ def _make_supabase_mock(lessons=None, lesson=None, count=None):
 @pytest.fixture()
 def client():
     app.dependency_overrides[get_current_user] = _mock_auth
-    with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
-        mock_get_client.return_value = _make_supabase_mock()
+    # Patch at the definition site so all imports get the mock
+    with patch("app.utils.supabase_client.get_supabase_admin") as mock_admin, \
+         patch("supabase.create_client") as mock_create:
+        mock_admin.return_value = _make_supabase_mock()
+        mock_create.return_value = _make_supabase_mock()
         yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -147,7 +148,7 @@ class TestListLessons:
         assert resp.status_code == 200
 
     def test_returns_502_on_db_error(self, client: TestClient) -> None:
-        with patch("app.routers.lessons.get_supabase_client") as mock:
+        with patch("app.utils.supabase_client.get_supabase_admin") as mock:
             mock.return_value.table.side_effect = Exception("DB error")
             resp = client.get("/api/v1/lessons")
         assert resp.status_code == 502
@@ -159,18 +160,19 @@ class TestListLessons:
 
 class TestGetLesson:
     def test_returns_200(self, client: TestClient) -> None:
-        with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
-            mock_get_client.return_value = _make_supabase_mock(lesson=SAMPLE_LESSON_DETAIL)
+        with patch("app.utils.supabase_client.get_supabase_admin") as mock_get:
+            mock_get.return_value = _make_supabase_mock(lesson=SAMPLE_LESSON_DETAIL)
             resp = client.get("/api/v1/lessons/lesson-001")
         assert resp.status_code == 200
 
     def test_returns_lesson_fields(self, client: TestClient) -> None:
-        with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
+        with patch("app.utils.supabase_client.get_supabase_admin") as mock_get:
             mock_supabase = _make_supabase_mock(lesson=SAMPLE_LESSON_DETAIL)
             single_response = MagicMock()
             single_response.data = SAMPLE_LESSON_DETAIL
-            mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = single_response
-            mock_get_client.return_value = mock_supabase
+            mock_supabase.table.return_value.select.return_value.eq.return_value \
+                .single.return_value.execute.return_value = single_response
+            mock_get.return_value = mock_supabase
             resp = client.get("/api/v1/lessons/lesson-001")
         assert resp.status_code == 200
         body = resp.json()
@@ -178,18 +180,18 @@ class TestGetLesson:
         assert "content" in body
 
     def test_returns_404_for_missing_lesson(self, client: TestClient) -> None:
-        with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
+        with patch("app.utils.supabase_client.get_supabase_admin") as mock_get:
             mock_supabase = _make_supabase_mock()
-            # Return None data for missing lesson
             mock_response = MagicMock()
             mock_response.data = None
-            mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_response
-            mock_get_client.return_value = mock_supabase
+            mock_supabase.table.return_value.select.return_value.eq.return_value \
+                .single.return_value.execute.return_value = mock_response
+            mock_get.return_value = mock_supabase
             resp = client.get("/api/v1/lessons/does-not-exist")
         assert resp.status_code == 404
 
     def test_returns_502_on_db_error(self, client: TestClient) -> None:
-        with patch("app.routers.lessons.get_supabase_client") as mock:
+        with patch("app.utils.supabase_client.get_supabase_admin") as mock:
             mock.return_value.table.side_effect = Exception("DB error")
             resp = client.get("/api/v1/lessons/lesson-001")
         assert resp.status_code == 502

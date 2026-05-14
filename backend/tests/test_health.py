@@ -63,8 +63,8 @@ def client():
     """Auth overridden — Supabase mocked."""
     app.dependency_overrides[get_current_user] = _mock_get_current_user
 
-    with patch("app.routers.lessons.get_supabase_client") as mock_lessons, \
-         patch("app.utils.supabase_client.get_supabase_client") as mock_utils, \
+    with patch("app.utils.supabase_client.get_supabase_admin") as mock_admin, \
+         patch("supabase.create_client") as mock_create, \
          patch("app.utils.supabase_client.SupabaseService.__init__", return_value=None), \
          patch("app.utils.supabase_client.SupabaseService.get_user_profile",
                return_value={
@@ -76,8 +76,8 @@ def client():
                    "streak_days": 0,
                    "plan": "free",
                }):
-        mock_lessons.return_value = _make_supabase_mock()
-        mock_utils.return_value = _make_supabase_mock()
+        mock_admin.return_value = _make_supabase_mock()
+        mock_create.return_value = _make_supabase_mock()
         with TestClient(app) as c:
             yield c
 
@@ -156,7 +156,7 @@ class TestLessons:
         assert isinstance(resp.json()["lessons"], list)
 
     def test_list_items_have_required_fields(self, client):
-        with patch("app.routers.lessons.get_supabase_client") as mock_get_client:
+        with patch("app.routers.lessons.get_supabase_admin") as mock_get_client:
             mock = _make_supabase_mock()
             lesson_response = MagicMock()
             lesson_response.data = [{
