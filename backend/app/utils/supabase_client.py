@@ -105,21 +105,24 @@ class SupabaseService:
         return response.data if response.data else []
 
     async def get_user_profile(self, user_id: str, display_name: str = None) -> dict:
-        """Get user profile, creating it on first access."""
+        """Get user profile, creating it on first access.
+        Uses admin client for upsert — RLS blocks anon key from inserting
+        new rows without a user auth token in the request context.
+        """
         try:
             response = (
-                self.db.table("user_profiles")
+                self._admin.table("user_profiles")
                 .select("*")
                 .eq("user_id", user_id)
-                .single()
+                .limit(1)
                 .execute()
             )
             if response.data:
-                return response.data
+                return response.data[0]
         except Exception:
             pass
 
-        # Create profile on first access
+        # Create profile on first access using admin client
         profile = {
             "user_id": user_id,
             "display_name": display_name or "PixelMentor User",
@@ -129,7 +132,11 @@ class SupabaseService:
             "streak_days": 0,
             "plan": "free",
         }
-        self.db.table("user_profiles").upsert(profile).execute()
+        try:
+            self._admin.table("user_profiles").upsert(profile).execute()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to create user profile: {e}")
         return profile
 
     async def get_photos_analyzed_today(self, user_id: str) -> int:
