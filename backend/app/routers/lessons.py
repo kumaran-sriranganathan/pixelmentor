@@ -28,7 +28,7 @@ async def get_lessons(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase_admin()
 
         query = supabase.table("lessons") \
             .select("id, title, description, category, difficulty, duration_minutes, is_pro, order, tags")
@@ -85,7 +85,7 @@ async def get_completions(
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in token")
 
-    supabase = get_supabase_client()
+    supabase = get_supabase_admin()
 
     try:
         response = (
@@ -110,7 +110,7 @@ async def get_lesson_content(
     Returns AI-expanded lesson content.
     Checks cache first — only calls GPT-4o on first access per lesson.
     """
-    supabase = get_supabase_client()
+    supabase = get_supabase_admin()
 
     # ── Check content cache ───────────────────────────────────────────────────
     try:
@@ -223,7 +223,7 @@ async def get_lesson(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase_admin()
         response = supabase.table("lessons") \
             .select("*") \
             .eq("id", lesson_id) \

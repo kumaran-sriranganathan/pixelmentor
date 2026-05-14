@@ -126,7 +126,7 @@ async def analyze_photo(
 
     # Persist to Supabase
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase_admin()
         supabase.table("photo_analyses").insert({
             "id": analysis_id,
             "user_id": user_id,
@@ -154,7 +154,7 @@ async def get_analysis_history(
     limit: int = 10,
     current_user: dict = Depends(get_current_user),
 ):
-    supabase = get_supabase_client()
+    supabase = get_supabase_admin()
     response = supabase.table("photo_analyses") \
         .select("*") \
         .eq("user_id", current_user["sub"]) \

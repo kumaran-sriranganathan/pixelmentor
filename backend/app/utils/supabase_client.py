@@ -44,49 +44,50 @@ class SupabaseService:
 
     async def save_analysis(self, user_id: str, analysis_id: str, blob_url: str, result) -> str:
         """Save photo analysis result to Supabase."""
-        # Use anon client — RLS ensures user can only write their own data
-        self.db.table("photo_analyses").upsert({
+        self._admin.table("photo_analyses").upsert({
             "id": analysis_id,
             "user_id": user_id,
             "blob_url": blob_url,
             "composition_score": int(result.composition_score),
             "vision_tags": result.vision_tags,
         }).execute()
-        # RPC uses SECURITY DEFINER — needs admin client to execute
         self._admin.rpc("increment_photos_analyzed", {"p_user_id": user_id}).execute()
         return analysis_id
 
     async def get_user_analyses(self, user_id: str, limit: int = 10) -> list:
         """Get recent analyses for a user."""
-        response = (
-            self.db.table("photo_analyses")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
-        )
-        return response.data
+        try:
+            response = (
+                self._admin.table("photo_analyses")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return response.data if response.data else []
+        except Exception:
+            return []
 
     async def get_skill_profile(self, user_id: str) -> dict:
         """Get user skill profile. Returns defaults if not found."""
         try:
             response = (
-                self.db.table("skill_profiles")
+                self._admin.table("skill_profiles")
                 .select("*")
                 .eq("user_id", user_id)
-                .single()
+                .limit(1)
                 .execute()
             )
-            return response.data if response.data else {
-                "level": "beginner", "strengths": [], "areas_to_improve": []
-            }
+            if response.data:
+                return response.data[0]
         except Exception:
-            return {"level": "beginner", "strengths": [], "areas_to_improve": []}
+            pass
+        return {"level": "beginner", "strengths": [], "areas_to_improve": []}
 
     async def append_chat_message(self, user_id: str, message: dict):
         """Append a message to chat history."""
-        self.db.table("chat_history").insert({
+        self._admin.table("chat_history").insert({
             "user_id": user_id,
             "role": message.get("role"),
             "content": message.get("content"),
@@ -94,15 +95,18 @@ class SupabaseService:
 
     async def get_chat_history(self, user_id: str, limit: int = 10) -> list:
         """Get recent chat history formatted for OpenAI messages."""
-        response = (
-            self.db.table("chat_history")
-            .select("role, content")
-            .eq("user_id", user_id)
-            .order("created_at", desc=False)
-            .limit(limit)
-            .execute()
-        )
-        return response.data if response.data else []
+        try:
+            response = (
+                self._admin.table("chat_history")
+                .select("role, content")
+                .eq("user_id", user_id)
+                .order("created_at", desc=False)
+                .limit(limit)
+                .execute()
+            )
+            return response.data if response.data else []
+        except Exception:
+            return []
 
     async def get_user_profile(self, user_id: str, display_name: str = None) -> dict:
         """Get user profile, creating it on first access.
@@ -145,7 +149,7 @@ class SupabaseService:
             from datetime import datetime, timezone, timedelta
             since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
             response = (
-                self.db.table("photo_analyses")
+                self._admin.table("photo_analyses")
                 .select("id", count="exact")
                 .eq("user_id", user_id)
                 .gte("created_at", since)

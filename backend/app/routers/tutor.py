@@ -158,8 +158,8 @@ async def _get_cached_pool(topic: str, difficulty: str) -> dict | None:
     Returns None on miss or expired.
     """
     try:
-        from app.utils.supabase_client import get_supabase_client
-        supabase = get_supabase_client()
+        from app.utils.supabase_client import get_supabase_admin
+        supabase = get_supabase_admin()
         result = supabase.table("quiz_cache") \
             .select("questions, refreshed_at, hit_count") \
             .eq("topic", topic) \
@@ -190,8 +190,8 @@ async def _get_cached_pool(topic: str, difficulty: str) -> dict | None:
 async def _store_pool(topic: str, difficulty: str, questions: list[dict]) -> None:
     """Upsert the question pool into the cache table."""
     try:
-        from app.utils.supabase_client import get_supabase_client
-        supabase = get_supabase_client()
+        from app.utils.supabase_client import get_supabase_admin
+        supabase = get_supabase_admin()
         supabase.table("quiz_cache").upsert({
             "topic": topic,
             "difficulty": difficulty,
@@ -207,8 +207,8 @@ async def _store_pool(topic: str, difficulty: str, questions: list[dict]) -> Non
 async def _increment_hits(topic: str, difficulty: str) -> None:
     """Fire-and-forget hit counter increment."""
     try:
-        from app.utils.supabase_client import get_supabase_client
-        supabase = get_supabase_client()
+        from app.utils.supabase_client import get_supabase_admin
+        supabase = get_supabase_admin()
         supabase.rpc("increment_quiz_cache_hits", {
             "p_topic": topic,
             "p_difficulty": difficulty,
