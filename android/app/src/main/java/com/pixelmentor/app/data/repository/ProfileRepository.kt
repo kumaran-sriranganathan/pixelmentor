@@ -15,4 +15,11 @@ class ProfileRepository @Inject constructor(
     } catch (e: Exception) {
         Result.failure(e)
     }
+
+    suspend fun deleteAccount(userId: String): Result<Unit> = try {
+        apiService.deleteAccount(userId)
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 }

@@ -12,6 +12,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+sealed class DeleteAccountState {
+    data object Idle : DeleteAccountState()
+    data object Deleting : DeleteAccountState()
+    data object Success : DeleteAccountState()
+    data class Error(val message: String) : DeleteAccountState()
+}
+
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val repository: ProfileRepository,
@@ -20,6 +27,9 @@ class ProfileViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
+
+    private val _deleteAccountState = MutableStateFlow<DeleteAccountState>(DeleteAccountState.Idle)
+    val deleteAccountState: StateFlow<DeleteAccountState> = _deleteAccountState.asStateFlow()
 
     init {
         loadProfile()
@@ -45,5 +55,33 @@ class ProfileViewModel @Inject constructor(
             authManager.signOut()
             onSignedOut()
         }
+    }
+
+    fun deleteAccount(onDeleted: () -> Unit) {
+        viewModelScope.launch {
+            _deleteAccountState.value = DeleteAccountState.Deleting
+            val user = authManager.getCurrentUser()
+            if (user == null) {
+                _deleteAccountState.value = DeleteAccountState.Error("Not signed in")
+                return@launch
+            }
+            repository.deleteAccount(user.id).fold(
+                onSuccess = {
+                    // Sign out locally after successful deletion
+                    authManager.signOut()
+                    _deleteAccountState.value = DeleteAccountState.Success
+                    onDeleted()
+                },
+                onFailure = {
+                    _deleteAccountState.value = DeleteAccountState.Error(
+                        it.message ?: "Failed to delete account. Please try again."
+                    )
+                }
+            )
+        }
+    }
+
+    fun resetDeleteAccountState() {
+        _deleteAccountState.value = DeleteAccountState.Idle
     }
 }

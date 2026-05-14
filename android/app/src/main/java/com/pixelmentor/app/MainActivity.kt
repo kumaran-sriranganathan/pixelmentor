@@ -140,7 +140,12 @@ private fun PixelMentorNavHost(startRoute: String = Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
-                    onUpgrade = { navController.navigate(Routes.UPGRADE) }
+                    onUpgrade = { navController.navigate(Routes.UPGRADE) },
+                    onAccountDeleted = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
                 )
             }
 

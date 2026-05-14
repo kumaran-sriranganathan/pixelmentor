@@ -22,15 +22,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pixelmentor.app.domain.model.*
+import com.pixelmentor.app.ui.profile.DeleteAccountState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     onSignOut: () -> Unit,
-    onUpgrade: () -> Unit,
+    onUpgrade: () -> Unit = {},
+    onAccountDeleted: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val deleteAccountState by viewModel.deleteAccountState.collectAsState()
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -85,8 +89,33 @@ fun ProfileScreen(
                 ProfileContent(
                     profile = state.profile,
                     onUpgrade = onUpgrade,
+                    onDeleteAccount = { showDeleteConfirmDialog = true },
                     modifier = Modifier.padding(padding)
                 )
+            }
+        }
+
+        // ── Delete confirmation dialog ─────────────────────────────────────
+        if (showDeleteConfirmDialog) {
+            DeleteAccountDialog(
+                isDeleting = deleteAccountState is DeleteAccountState.Deleting,
+                onConfirm = {
+                    showDeleteConfirmDialog = false
+                    viewModel.deleteAccount(onAccountDeleted)
+                },
+                onDismiss = {
+                    showDeleteConfirmDialog = false
+                    viewModel.resetDeleteAccountState()
+                }
+            )
+        }
+
+        // ── Error snackbar ────────────────────────────────────────────────
+        if (deleteAccountState is DeleteAccountState.Error) {
+            LaunchedEffect(deleteAccountState) {
+                // Reset after showing error so it doesn't persist
+                kotlinx.coroutines.delay(3000)
+                viewModel.resetDeleteAccountState()
             }
         }
     }
@@ -99,7 +128,8 @@ fun ProfileScreen(
 @Composable
 private fun ProfileContent(
     profile: UserProfile,
-    onUpgrade: () -> Unit,
+    onUpgrade: () -> Unit = {},
+    onDeleteAccount: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -113,6 +143,7 @@ private fun ProfileContent(
         SkillLevelCard(skillLevel = profile.skillLevel)
         PlanCard(plan = profile.plan, onUpgrade = onUpgrade)
         ActivitySection(profile = profile)
+        DeleteAccountSection(onDeleteAccount = onDeleteAccount)
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -380,7 +411,7 @@ private fun SkillLevelCard(skillLevel: SkillLevel) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun PlanCard(plan: Plan, onUpgrade: () -> Unit) {
+private fun PlanCard(plan: Plan, onUpgrade: () -> Unit = {}) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -541,4 +572,112 @@ private fun ActivityRow(
             )
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Delete account section
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun DeleteAccountSection(onDeleteAccount: () -> Unit) {
+    Column(
+        modifier = Modifier.padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(4.dp))
+        OutlinedButton(
+            onClick = onDeleteAccount,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.error
+            )
+        ) {
+            Icon(
+                Icons.Outlined.DeleteForever,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Delete Account",
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        Text(
+            text = "Permanently deletes your account and all associated data. This cannot be undone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Delete account confirmation dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun DeleteAccountDialog(
+    isDeleting: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!isDeleting) onDismiss() },
+        icon = {
+            Icon(
+                Icons.Outlined.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(28.dp)
+            )
+        },
+        title = {
+            Text(
+                "Delete Account?",
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        text = {
+            Text(
+                "This will permanently delete your account, all your photos, " +
+                "lesson progress, chat history, and analysis results.\n\n" +
+                "This action cannot be undone.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !isDeleting,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                if (isDeleting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = MaterialTheme.colorScheme.onError,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Deleting...")
+                } else {
+                    Text("Yes, Delete Everything", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isDeleting
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
 }
