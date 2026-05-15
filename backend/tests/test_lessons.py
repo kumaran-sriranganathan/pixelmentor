@@ -63,15 +63,12 @@ async def _mock_auth():
 
 
 def _make_supabase_mock(lessons=None, lesson=None, count=None):
-    """Create a mock Supabase client."""
+    """Create a fully chained mock Supabase client."""
     mock = MagicMock()
 
     list_response = MagicMock()
     list_response.data = lessons if lessons is not None else SAMPLE_LESSONS
     list_response.count = count if count is not None else len(SAMPLE_LESSONS)
-
-    detail_response = MagicMock()
-    detail_response.data = lesson if lesson is not None else SAMPLE_LESSON_DETAIL
 
     mock_query = MagicMock()
     mock_query.select.return_value = mock_query
@@ -82,6 +79,7 @@ def _make_supabase_mock(lessons=None, lesson=None, count=None):
     mock_query.limit.return_value = mock_query
     mock_query.text_search.return_value = mock_query
     mock_query.execute.return_value = list_response
+    mock_query.delete.return_value = mock_query
 
     mock.table.return_value = mock_query
     mock.rpc.return_value = mock_query
@@ -96,11 +94,11 @@ def _make_supabase_mock(lessons=None, lesson=None, count=None):
 @pytest.fixture()
 def client():
     app.dependency_overrides[get_current_user] = _mock_auth
-    # Patch at the definition site so all imports get the mock
-    with patch("app.utils.supabase_client.get_supabase_admin") as mock_admin, \
-         patch("supabase.create_client") as mock_create:
-        mock_admin.return_value = _make_supabase_mock()
-        mock_create.return_value = _make_supabase_mock()
+    mock_sb = _make_supabase_mock()
+    # Patch Client.create to prevent the get_session() network call
+    with patch("supabase.Client.create", return_value=mock_sb), \
+         patch("app.utils.supabase_client.get_supabase_admin", return_value=mock_sb), \
+         patch("app.utils.supabase_client.get_supabase_client", return_value=mock_sb):
         yield TestClient(app)
     app.dependency_overrides.clear()
 

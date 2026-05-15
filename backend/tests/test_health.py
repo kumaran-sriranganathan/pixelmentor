@@ -60,11 +60,13 @@ def _make_supabase_mock():
 
 @pytest.fixture
 def client():
-    """Auth overridden — Supabase mocked."""
+    """Auth overridden — Supabase mocked at Client.create level."""
     app.dependency_overrides[get_current_user] = _mock_get_current_user
+    mock_sb = _make_supabase_mock()
 
-    with patch("app.utils.supabase_client.get_supabase_admin") as mock_admin, \
-         patch("supabase.create_client") as mock_create, \
+    with patch("supabase.Client.create", return_value=mock_sb), \
+         patch("app.utils.supabase_client.get_supabase_admin", return_value=mock_sb), \
+         patch("app.utils.supabase_client.get_supabase_client", return_value=mock_sb), \
          patch("app.utils.supabase_client.SupabaseService.__init__", return_value=None), \
          patch("app.utils.supabase_client.SupabaseService.get_user_profile",
                return_value={
@@ -76,8 +78,6 @@ def client():
                    "streak_days": 0,
                    "plan": "free",
                }):
-        mock_admin.return_value = _make_supabase_mock()
-        mock_create.return_value = _make_supabase_mock()
         with TestClient(app) as c:
             yield c
 
