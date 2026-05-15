@@ -10,8 +10,8 @@ import com.pixelmentor.app.domain.model.QuizRequest
 import com.pixelmentor.app.domain.model.QuizResponse
 import retrofit2.http.Body
 import retrofit2.http.GET
-import retrofit2.http.DELETE
 import retrofit2.http.POST
+import retrofit2.http.DELETE
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -32,9 +32,6 @@ interface PixelMentorApiService {
     @GET("api/v1/users/{userId}")
     suspend fun getUser(@Path("userId") userId: String): UserProfileDto
 
-    @DELETE("api/v1/users/{userId}")
-    suspend fun deleteAccount(@Path("userId") userId: String): DeleteAccountResponseDto
-
     @POST("api/v1/analyze/photo")
     suspend fun analyzePhoto(
         @Body request: PhotoAnalysisRequest
@@ -47,6 +44,15 @@ interface PixelMentorApiService {
 
     @GET("api/v1/lessons/{id}/content")
     suspend fun getLessonContent(@Path("id") id: String): LessonContentDto
+
+    @POST("api/v1/lessons/{id}/complete")
+    suspend fun markLessonComplete(@Path("id") id: String): MarkCompleteResponseDto
+
+    @GET("api/v1/lessons/completions")
+    suspend fun getCompletions(): CompletionsDto
+
+    @DELETE("api/v1/users/{userId}")
+    suspend fun deleteAccount(@Path("userId") userId: String): DeleteAccountResponseDto
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -124,6 +130,15 @@ data class UserProfileDto(
 data class LessonContentDto(
     val lesson_id: String,
     val content: String,
+)
+
+data class MarkCompleteResponseDto(
+    val lesson_id: String,
+    val completed: Boolean,
+)
+
+data class CompletionsDto(
+    val completed_lesson_ids: List<String>,
 )
 
 data class DeleteAccountResponseDto(
