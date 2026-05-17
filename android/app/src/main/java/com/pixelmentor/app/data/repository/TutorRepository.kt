@@ -26,11 +26,13 @@ class TutorRepository @Inject constructor(
      */
     fun streamChat(
         message: String,
+        sessionId: String,
         topic: String? = null,
         authToken: String
     ): Flow<String> = flow {
         val body = JSONObject().apply {
             put("message", message)
+            put("session_id", sessionId)
             topic?.let { put("topic", it) }
         }.toString()
 
