@@ -17,6 +17,12 @@ class TutorViewModel @Inject constructor(
     private val authManager: SupabaseAuthManager
 ) : ViewModel() {
 
+    // ── Session ───────────────────────────────────────────────────────────────
+    // A new session ID is generated each time the ViewModel is created (i.e.
+    // each time the user opens the Tutor screen). This scopes chat history to
+    // the current conversation so GPT-4o doesn't bleed context across sessions.
+    private val sessionId: String = UUID.randomUUID().toString()
+
     // ── Chat state ────────────────────────────────────────────────────────────
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -75,6 +81,7 @@ class TutorViewModel @Inject constructor(
 
                 repository.streamChat(
                     message = text,
+                    sessionId = sessionId,
                     authToken = token
                 ).collect { chunk ->
                     sb.append(chunk)
