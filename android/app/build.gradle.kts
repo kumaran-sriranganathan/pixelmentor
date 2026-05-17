@@ -31,7 +31,7 @@ android {
         applicationId = "com.pixelmentor.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
+        versionCode = 2
         versionName = "1.0.1"
 
         buildConfigField("String", "ENTRA_CLIENT_ID", "\"51c1a8ba-2b07-4d99-bd91-4652081f7b41\"")
