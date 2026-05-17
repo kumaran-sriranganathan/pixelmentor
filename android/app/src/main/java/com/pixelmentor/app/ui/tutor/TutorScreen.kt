@@ -38,6 +38,7 @@ fun TutorScreen(
     val inputText by viewModel.inputText.collectAsState()
     val quizState by viewModel.quizState.collectAsState()
     val selectedTopic by viewModel.selectedTopic.collectAsState()
+    val quizCacheWarming by viewModel.quizCacheWarming.collectAsState()
 
     Scaffold(
         topBar = {
@@ -79,6 +80,7 @@ fun TutorScreen(
                 TutorTab.QUIZ -> QuizTab(
                     quizState = quizState,
                     selectedTopic = selectedTopic,
+                    quizCacheWarming = quizCacheWarming,
                     onTopicSelected = viewModel::onTopicSelected,
                     onStartQuiz = viewModel::startQuiz,
                     onSelectAnswer = viewModel::selectAnswer,
@@ -409,6 +411,7 @@ private fun ChatInputBar(
 private fun QuizTab(
     quizState: QuizUiState,
     selectedTopic: String,
+    quizCacheWarming: Boolean = false,
     onTopicSelected: (String) -> Unit,
     onStartQuiz: () -> Unit,
     onSelectAnswer: (Int) -> Unit,
@@ -418,6 +421,7 @@ private fun QuizTab(
     when (quizState) {
         is QuizUiState.Idle -> QuizSetup(
             selectedTopic = selectedTopic,
+            quizCacheWarming = quizCacheWarming,
             onTopicSelected = onTopicSelected,
             onStartQuiz = onStartQuiz
         )
@@ -448,6 +452,7 @@ private fun QuizTab(
 @Composable
 private fun QuizSetup(
     selectedTopic: String,
+    quizCacheWarming: Boolean = false,
     onTopicSelected: (String) -> Unit,
     onStartQuiz: () -> Unit
 ) {
@@ -518,17 +523,25 @@ private fun QuizSetup(
 
         Button(
             onClick = onStartQuiz,
+            enabled = !quizCacheWarming,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(54.dp),
             shape = RoundedCornerShape(14.dp)
         ) {
-            Icon(Icons.Outlined.PlayArrow, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "Start Quiz — $selectedTopic",
-                fontWeight = FontWeight.Bold
-            )
+            if (quizCacheWarming) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Preparing quiz…", fontWeight = FontWeight.Bold)
+            } else {
+                Icon(Icons.Outlined.PlayArrow, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Start Quiz — $selectedTopic", fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

@@ -42,10 +42,33 @@ class TutorViewModel @Inject constructor(
     private val _selectedTopic = MutableStateFlow(photographyTopics.first())
     val selectedTopic: StateFlow<String> = _selectedTopic.asStateFlow()
 
+    // ── Cache warming ─────────────────────────────────────────────────────────
+
+    private val _quizCacheWarming = MutableStateFlow(false)
+    val quizCacheWarming: StateFlow<Boolean> = _quizCacheWarming.asStateFlow()
+
     // ── Tab ───────────────────────────────────────────────────────────────────
 
     private val _activeTab = MutableStateFlow(TutorTab.CHAT)
     val activeTab: StateFlow<TutorTab> = _activeTab.asStateFlow()
+
+    init {
+        // Warm the cache for the default topic as soon as the ViewModel is created
+        warmQuizCache(photographyTopics.first())
+    }
+
+    private fun warmQuizCache(topic: String) {
+        viewModelScope.launch {
+            _quizCacheWarming.value = true
+            try {
+                repository.generateQuiz(topic = topic)
+            } catch (_: Exception) {
+                // Warming failure is silent — user just waits normally if cache is cold
+            } finally {
+                _quizCacheWarming.value = false
+            }
+        }
+    }
 
     // ── Chat actions ──────────────────────────────────────────────────────────
 
@@ -115,6 +138,7 @@ class TutorViewModel @Inject constructor(
 
     fun onTopicSelected(topic: String) {
         _selectedTopic.value = topic
+        warmQuizCache(topic) // Pre-warm cache so Start Quiz is instant
     }
 
     fun startQuiz() {
