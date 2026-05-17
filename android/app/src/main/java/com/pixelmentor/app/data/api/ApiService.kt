@@ -144,3 +144,9 @@ data class CompletionsDto(
 data class DeleteAccountResponseDto(
     val message: String,
 )
+
+data class ChatRequest(
+    val message: String,
+    val session_id: String,
+    val topic: String? = null,
+)

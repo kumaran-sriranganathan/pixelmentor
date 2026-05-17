@@ -59,6 +59,7 @@ Keep responses concise and encouraging."""
 class ChatRequest(BaseModel):
     message: str
     topic: str | None = None
+    session_id: str | None = None
 
 
 class QuizRequest(BaseModel):
@@ -259,9 +260,9 @@ async def tutor_chat(
     await service.append_chat_message(user_id, {
         "role": "user",
         "content": request.message,
-    })
+    }, session_id=request.session_id)
 
-    history = await service.get_chat_history(user_id, limit=10)
+    history = await service.get_chat_history(user_id, limit=10, session_id=request.session_id)
 
     async def stream_and_save():
         full_response = []
