@@ -112,16 +112,25 @@ async def analyze_photo(
 
     logger.info(f"Photo analysis started — analysis_id={analysis_id} user_id={user_id} size={len(image_data)//1024}KB")
 
-    # Upload to Cloudflare R2 and get presigned URL for AI
-    presigned_url = await upload_to_r2(image_data, blob_path, request.content_type)
+    # ── Run R2 upload and GPT-4o analysis in parallel ────────────────────────
+    # GPT-4o receives the image as base64 directly while R2 upload runs
+    # concurrently — saves 1-3 seconds vs sequential execution.
+    import asyncio
 
-    # Run PhotoCoach agent pipeline
     agent = PhotoCoachAgent()
-    result = await agent.run(
-        image_url=presigned_url,
-        skill_level=request.skill_level,
-        user_id=user_id,
-        analysis_id=analysis_id,
+
+    async def run_analysis():
+        return await agent.run(
+            image_base64=request.image_base64,
+            image_content_type=request.content_type,
+            skill_level=request.skill_level,
+            user_id=user_id,
+            analysis_id=analysis_id,
+        )
+
+    presigned_url, result = await asyncio.gather(
+        upload_to_r2(image_data, blob_path, request.content_type),
+        run_analysis(),
     )
 
     # Persist to Supabase
@@ -147,6 +156,12 @@ async def analyze_photo(
     logger.info(f"Photo analysis complete — analysis_id={analysis_id} score={result.composition_score}")
 
     return result
+
+
+@router.get("/health")
+async def health_check():
+    """Keep-alive endpoint — pinged every 5 minutes to prevent Railway cold starts."""
+    return {"status": "ok"}
 
 
 @router.get("/history")
