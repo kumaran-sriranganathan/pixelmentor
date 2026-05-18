@@ -7,7 +7,8 @@ import com.google.gson.annotations.SerializedName
 data class PhotoAnalysisRequest(
     @SerializedName("image_base64") val imageBase64: String,
     @SerializedName("filename") val filename: String = "photo.jpg",
-    @SerializedName("mime_type") val mimeType: String = "image/jpeg"
+    @SerializedName("content_type") val contentType: String = "image/jpeg",
+    @SerializedName("skill_level") val skillLevel: String = "intermediate"
 )
 
 // ── Response ──────────────────────────────────────────────────────────────────
