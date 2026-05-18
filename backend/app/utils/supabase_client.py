@@ -85,21 +85,27 @@ class SupabaseService:
             pass
         return {"level": "beginner", "strengths": [], "areas_to_improve": []}
 
-    async def append_chat_message(self, user_id: str, message: dict):
+    async def append_chat_message(self, user_id: str, message: dict, session_id: str | None = None):
         """Append a message to chat history."""
         self._admin.table("chat_history").insert({
             "user_id": user_id,
             "role": message.get("role"),
             "content": message.get("content"),
+            "session_id": session_id,
         }).execute()
 
-    async def get_chat_history(self, user_id: str, limit: int = 10) -> list:
+    async def get_chat_history(self, user_id: str, limit: int = 10, session_id: str | None = None) -> list:
         """Get recent chat history formatted for OpenAI messages."""
         try:
-            response = (
+            query = (
                 self._admin.table("chat_history")
                 .select("role, content")
                 .eq("user_id", user_id)
+            )
+            if session_id:
+                query = query.eq("session_id", session_id)
+            response = (
+                query
                 .order("created_at", desc=False)
                 .limit(limit)
                 .execute()

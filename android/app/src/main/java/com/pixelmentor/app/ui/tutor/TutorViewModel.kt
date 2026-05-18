@@ -17,6 +17,12 @@ class TutorViewModel @Inject constructor(
     private val authManager: SupabaseAuthManager
 ) : ViewModel() {
 
+    // ── Session ───────────────────────────────────────────────────────────────
+    // A new session ID is generated each time the ViewModel is created (i.e.
+    // each time the user opens the Tutor screen). This scopes chat history to
+    // the current conversation so GPT-4o doesn't bleed context across sessions.
+    private val sessionId: String = UUID.randomUUID().toString()
+
     // ── Chat state ────────────────────────────────────────────────────────────
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -36,10 +42,33 @@ class TutorViewModel @Inject constructor(
     private val _selectedTopic = MutableStateFlow(photographyTopics.first())
     val selectedTopic: StateFlow<String> = _selectedTopic.asStateFlow()
 
+    // ── Cache warming ─────────────────────────────────────────────────────────
+
+    private val _quizCacheWarming = MutableStateFlow(false)
+    val quizCacheWarming: StateFlow<Boolean> = _quizCacheWarming.asStateFlow()
+
     // ── Tab ───────────────────────────────────────────────────────────────────
 
     private val _activeTab = MutableStateFlow(TutorTab.CHAT)
     val activeTab: StateFlow<TutorTab> = _activeTab.asStateFlow()
+
+    init {
+        // Warm the cache for the default topic as soon as the ViewModel is created
+        warmQuizCache(photographyTopics.first())
+    }
+
+    private fun warmQuizCache(topic: String) {
+        viewModelScope.launch {
+            _quizCacheWarming.value = true
+            try {
+                repository.generateQuiz(topic = topic)
+            } catch (_: Exception) {
+                // Warming failure is silent — user just waits normally if cache is cold
+            } finally {
+                _quizCacheWarming.value = false
+            }
+        }
+    }
 
     // ── Chat actions ──────────────────────────────────────────────────────────
 
@@ -75,6 +104,7 @@ class TutorViewModel @Inject constructor(
 
                 repository.streamChat(
                     message = text,
+                    sessionId = sessionId,
                     authToken = token
                 ).collect { chunk ->
                     sb.append(chunk)
@@ -108,6 +138,7 @@ class TutorViewModel @Inject constructor(
 
     fun onTopicSelected(topic: String) {
         _selectedTopic.value = topic
+        warmQuizCache(topic) // Pre-warm cache so Start Quiz is instant
     }
 
     fun startQuiz() {

@@ -31,13 +31,13 @@ android {
         applicationId = "com.pixelmentor.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 8
+        versionName = "1.0.7"
 
         buildConfigField("String", "ENTRA_CLIENT_ID", "\"51c1a8ba-2b07-4d99-bd91-4652081f7b41\"")
         buildConfigField("String", "ENTRA_TENANT_ID", "\"260b8d50-600d-47d4-b73c-e094c1674813\"")
         buildConfigField("String", "API_BASE_URL_DEV", "\"https://pixelmentor-production.up.railway.app/\"")
-        buildConfigField("String", "API_BASE_URL_PROD", "\"https://pm-prod-api.happyfield-58cc0921.australiaeast.azurecontainerapps.io/\"")
+        buildConfigField("String", "API_BASE_URL_PROD", "\"https://pixelmentor-production.up.railway.app/\"")
         // Supabase URL is not sensitive — it's visible in network traffic
         buildConfigField("String", "SUPABASE_URL", "\"https://sevikgqyffziljftqabd.supabase.co\"")
         // Secrets — injected from local.properties (dev) or CI environment variables (CI/CD)

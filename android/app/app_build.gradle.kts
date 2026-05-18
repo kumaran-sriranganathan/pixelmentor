@@ -21,7 +21,7 @@ android {
         buildConfigField("String", "ENTRA_CLIENT_ID", "\"51c1a8ba-2b07-4d99-bd91-4652081f7b41\"")
         buildConfigField("String", "ENTRA_TENANT_ID", "\"260b8d50-600d-47d4-b73c-e094c1674813\"")
         buildConfigField("String", "API_BASE_URL_DEV", "\"https://pixelmentor-production.up.railway.app/\"")
-        buildConfigField("String", "API_BASE_URL_PROD", "\"https://pm-prod-api.happyfield-58cc0921.australiaeast.azurecontainerapps.io/\"")
+        buildConfigField("String", "API_BASE_URL_PROD", "\"https://pixelmentor-production.up.railway.app/\"")
         buildConfigField("String", "SUPABASE_URL", "\"https://sevikgqyffziljftqabd.supabase.co\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNldmlrZ3F5ZmZ6aWxqZnRxYWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwOTMwODcsImV4cCI6MjA5MDY2OTA4N30.fY4Xsb49ieK8SnUYoulk_MJVfKRz8XKlnZtc9olWCNE\"")
         // ⚠️ Replace with your Web Client ID from Google Cloud Console
