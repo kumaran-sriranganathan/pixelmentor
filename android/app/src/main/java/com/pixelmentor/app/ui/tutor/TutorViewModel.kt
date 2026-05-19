@@ -61,9 +61,9 @@ class TutorViewModel @Inject constructor(
         viewModelScope.launch {
             _quizCacheWarming.value = true
             try {
-                repository.generateQuiz(topic = topic)
+                val token = authManager.getCurrentUser()?.accessToken ?: return@launch
+                repository.generateQuiz(topic = topic, authToken = token)
             } catch (_: Exception) {
-                // Warming failure is silent — user just waits normally if cache is cold
             } finally {
                 _quizCacheWarming.value = false
             }
@@ -146,14 +146,16 @@ class TutorViewModel @Inject constructor(
         _quizState.value = QuizUiState.Loading
 
         viewModelScope.launch {
-            repository.generateQuiz(topic = topic).fold(
-                onSuccess = { quiz ->
-                    _quizState.value = QuizUiState.Active(quiz = quiz)
-                },
-                onFailure = {
-                    _quizState.value = QuizUiState.Error(it.message ?: "Failed to generate quiz")
-                }
-            )
+            try {
+                val token = authManager.getCurrentUser()?.accessToken
+                    ?: throw Exception("Not authenticated")
+                repository.generateQuiz(topic = topic, authToken = token).fold(
+                    onSuccess = { _quizState.value = QuizUiState.Active(quiz = it) },
+                    onFailure = { _quizState.value = QuizUiState.Error(it.message ?: "Failed to generate quiz") }
+                )
+            } catch (e: Exception) {
+                _quizState.value = QuizUiState.Error(e.message ?: "Not authenticated")
+            }
         }
     }
 

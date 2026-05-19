@@ -25,16 +25,17 @@ class AnalysisRepository @Inject constructor(
      * Compress the URI to a JPEG (max 1024px on the long edge, 85% quality),
      * base64-encode it, then POST to the backend.
      */
-    suspend fun analyzePhoto(uri: Uri): Result<PhotoAnalysisResponse> = withContext(Dispatchers.IO) {
-        try {
-            val base64 = uriToBase64(uri)
-            val request = PhotoAnalysisRequest(imageBase64 = base64)
-            val response = apiService.analyzePhoto(request)
-            Result.success(response)
-        } catch (e: Exception) {
-            Result.failure(e)
+    suspend fun analyzePhoto(uri: Uri, authToken: String): Result<PhotoAnalysisResponse> =
+        withContext(Dispatchers.IO) {
+            try {
+                val base64 = uriToBase64(uri)
+                val request = PhotoAnalysisRequest(imageBase64 = base64)
+                val response = apiService.analyzePhoto("Bearer $authToken", request)
+                Result.success(response)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
         }
-    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
