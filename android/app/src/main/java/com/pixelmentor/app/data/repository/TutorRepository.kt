@@ -76,10 +76,12 @@ class TutorRepository @Inject constructor(
     suspend fun generateQuiz(
         topic: String,
         difficulty: String = "intermediate",
-        numQuestions: Int = 5
+        numQuestions: Int = 5,
+        authToken: String          // ← ADD THIS
     ): Result<QuizResponse> = try {
         val response = apiService.generateQuiz(
-            QuizRequest(
+            authorization = "Bearer $authToken",   // ← ADD THIS
+            body = QuizRequest(
                 topic = topic,
                 difficulty = difficulty,
                 numQuestions = numQuestions

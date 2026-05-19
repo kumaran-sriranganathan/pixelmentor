@@ -27,6 +27,15 @@ class AuthRepository @Inject constructor(
         }
     }
 
+    suspend fun getValidToken(): String? {
+        return try {
+            // First try the in-memory state (fast path)
+            currentToken ?: supabaseAuthManager.getCurrentUser()?.accessToken
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     suspend fun signInWithEmail(email: String, password: String) {
         val user = supabaseAuthManager.signInWithEmail(email, password)
         _authState.value = AuthState.Authenticated(user)

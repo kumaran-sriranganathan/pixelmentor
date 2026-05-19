@@ -23,7 +23,8 @@ class AuthInterceptor(
     private val authRepository: AuthRepository,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val token = authRepository.currentToken
+        // Use runBlocking to safely fetch token on OkHttp's IO thread
+        val token = runBlocking { authRepository.getValidToken() }
         val request = if (token != null) {
             chain.request().withBearerToken(token)
         } else {
