@@ -17,7 +17,7 @@ val localProps = Properties().apply {
 }
 
 fun secret(key: String): String {
-    // CI injects as environment variable; local dev uses local.properties file
+    // CI injects as environment variable; local dev uses local.properties
     return System.getenv(key)
         ?: localProps.getProperty(key)
         ?: error("Missing required secret: $key — add to local.properties or CI environment")
@@ -31,8 +31,8 @@ android {
         applicationId = "com.pixelmentor.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.1.2"
+        versionCode = 13
+        versionName = "1.1.3"
 
         buildConfigField("String", "ENTRA_CLIENT_ID", "\"51c1a8ba-2b07-4d99-bd91-4652081f7b41\"")
         buildConfigField("String", "ENTRA_TENANT_ID", "\"260b8d50-600d-47d4-b73c-e094c1674813\"")
