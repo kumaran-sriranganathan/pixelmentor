@@ -17,7 +17,7 @@ val localProps = Properties().apply {
 }
 
 fun secret(key: String): String {
-    // CI injects as environment variable; local dev uses local.properties
+    // CI injects as environment variable; local dev uses local.properties file
     return System.getenv(key)
         ?: localProps.getProperty(key)
         ?: error("Missing required secret: $key — add to local.properties or CI environment")
