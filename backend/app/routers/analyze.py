@@ -121,8 +121,7 @@ async def analyze_photo(
 
     async def run_analysis():
         return await agent.run(
-            image_base64=request.image_base64,
-            image_content_type=request.content_type,
+            image_url=presigned_url,        # ← was image_base64=request.image_base64
             skill_level=request.skill_level,
             user_id=user_id,
             analysis_id=analysis_id,

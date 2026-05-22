@@ -109,7 +109,11 @@ async def _generate_question_pool(
     Generate a pool of questions using gpt-4o-mini.
     Single API call regardless of pool size — fast and cheap.
     """
-    client = get_openai_client()
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key,
+        timeout=60.0,   # ← 40 questions needs more time than default 25s
+        max_retries=0,  # ← don't retry, just fail fast if it times out
+    )
     logger.info(f"Generating {pool_size}-question pool for topic='{topic}' difficulty='{difficulty}'")
 
     response = await client.chat.completions.create(
@@ -145,6 +149,7 @@ Return ONLY the JSON object, no other text."""
         response_format={"type": "json_object"},
         max_tokens=6000,   # 40 questions × ~150 tokens each
         temperature=0.85,  # slightly higher for more variety in the pool
+        timeout=55.0,
     )
 
     data = json.loads(response.choices[0].message.content)
@@ -154,10 +159,6 @@ Return ONLY the JSON object, no other text."""
 
 
 async def _get_cached_pool(topic: str, difficulty: str) -> dict | None:
-    """
-    Returns the cache row if it exists and is not expired (>TTL days old).
-    Returns None on miss or expired.
-    """
     try:
         from app.utils.supabase_client import get_supabase_admin
         supabase = get_supabase_admin()
@@ -165,11 +166,12 @@ async def _get_cached_pool(topic: str, difficulty: str) -> dict | None:
             .select("questions, refreshed_at, hit_count") \
             .eq("topic", topic) \
             .eq("difficulty", difficulty) \
-            .single() \
+            .maybe_single() \
             .execute()
 
         if not result.data:
             return None
+        # ... rest unchanged
 
         refreshed_at = datetime.fromisoformat(
             result.data["refreshed_at"].replace("Z", "+00:00")
