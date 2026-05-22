@@ -36,7 +36,7 @@ def get_openai_client() -> AsyncOpenAI:
     return _openai_client
 
 # ── Cache config ──────────────────────────────────────────────────────────────
-QUIZ_POOL_SIZE   = 40   # questions generated and stored per topic+difficulty
+QUIZ_POOL_SIZE   = 10   # questions generated and stored per topic+difficulty
 QUIZ_SERVE_SIZE  = 5    # questions sampled from pool per request
 CACHE_TTL_DAYS   = 7    # regenerate pool after this many days
 CACHE_WARM_DAYS  = 5    # trigger background refresh after this many days

@@ -119,17 +119,14 @@ async def analyze_photo(
 
     agent = PhotoCoachAgent()
 
-    async def run_analysis():
-        return await agent.run(
-            image_url=presigned_url,        # ← was image_base64=request.image_base64
-            skill_level=request.skill_level,
-            user_id=user_id,
-            analysis_id=analysis_id,
-        )
+    # Upload to R2 first to get the presigned URL, then run GPT-4o vision analysis
+    presigned_url = await upload_to_r2(image_data, blob_path, request.content_type)
 
-    presigned_url, result = await asyncio.gather(
-        upload_to_r2(image_data, blob_path, request.content_type),
-        run_analysis(),
+    result = await agent.run(
+        image_url=presigned_url,
+        skill_level=request.skill_level,
+        user_id=user_id,
+        analysis_id=analysis_id,
     )
 
     # Persist to Supabase
