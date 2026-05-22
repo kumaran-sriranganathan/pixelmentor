@@ -62,7 +62,6 @@ async def upload_to_r2(image_data: bytes, blob_path: str, content_type: str) -> 
             ContentType=content_type,
         )
     )
-    # Return a presigned URL valid for 10 minutes for the AI pipeline
     url = await loop.run_in_executor(
         None,
         lambda: r2.generate_presigned_url(
@@ -92,30 +91,37 @@ async def analyze_photo(
 
     user_id = current_user["sub"]
 
-    # ── Fix 5: Per-user daily rate limit ────────────────────────────────────
-    # Prevents a single user from burning OpenAI budget
     from app.utils.supabase_client import SupabaseService
     service = SupabaseService()
-    photos_today = await service.get_photos_analyzed_today(user_id)
-    if photos_today >= settings.max_photos_per_user_per_day:
+
+    # ── Plan-based monthly photo limit ───────────────────────────────────────
+    plan = await service.get_user_plan(user_id)
+    monthly_limit = settings.get_photo_limit(plan)
+    photos_this_month = await service.get_photos_analyzed_this_month(user_id)
+
+    if photos_this_month >= monthly_limit:
+        plan_label = plan.capitalize()
         raise HTTPException(
             status_code=429,
-            detail=f"Daily photo analysis limit reached ({settings.max_photos_per_user_per_day}/day). Try again tomorrow."
+            detail={
+                "error": "photo_limit_reached",
+                "message": f"You've used all {monthly_limit} photo analyses included in your {plan_label} plan this month.",
+                "limit": monthly_limit,
+                "used": photos_this_month,
+                "plan": plan,
+                "upgrade_required": plan == "free",
+            }
         )
 
     analysis_id = str(uuid.uuid4())
 
-    # ── Fix 7: Sanitise blob path — never use user-supplied filename ─────────
-    # Derive extension from validated content_type only — immune to path traversal
     ext = CONTENT_TYPE_TO_EXT.get(request.content_type, "jpg")
     blob_path = f"{user_id}/{analysis_id}/photo.{ext}"
 
-    logger.info(f"Photo analysis started — analysis_id={analysis_id} user_id={user_id} size={len(image_data)//1024}KB")
-
-    # ── Run R2 upload and GPT-4o analysis in parallel ────────────────────────
-    # GPT-4o receives the image as base64 directly while R2 upload runs
-    # concurrently — saves 1-3 seconds vs sequential execution.
-    import asyncio
+    logger.info(
+        f"Photo analysis started — analysis_id={analysis_id} user_id={user_id} "
+        f"plan={plan} used={photos_this_month}/{monthly_limit} size={len(image_data)//1024}KB"
+    )
 
     agent = PhotoCoachAgent()
 
@@ -142,12 +148,10 @@ async def analyze_photo(
             "blob_path": blob_path,
         }).execute()
 
-        # Privileged RPC — use admin client
         get_supabase_admin().rpc("increment_photos_analyzed", {"p_user_id": user_id}).execute()
 
     except Exception as e:
         logger.error(f"Failed to save analysis to Supabase: {e}")
-        # Don't fail the request just because persistence failed
 
     logger.info(f"Photo analysis complete — analysis_id={analysis_id} score={result.composition_score}")
 
@@ -173,3 +177,22 @@ async def get_analysis_history(
         .limit(limit) \
         .execute()
     return response.data
+
+
+@router.get("/usage")
+async def get_usage(
+    current_user: dict = Depends(get_current_user),
+):
+    """Returns current month photo usage and limit for the user's plan."""
+    from app.utils.supabase_client import SupabaseService
+    service = SupabaseService()
+    user_id = current_user["sub"]
+    plan = await service.get_user_plan(user_id)
+    used = await service.get_photos_analyzed_this_month(user_id)
+    limit = settings.get_photo_limit(plan)
+    return {
+        "plan": plan,
+        "photos_used_this_month": used,
+        "photos_limit": limit,
+        "photos_remaining": max(0, limit - used),
+    }

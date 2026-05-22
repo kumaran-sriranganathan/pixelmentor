@@ -259,19 +259,12 @@ async def tutor_chat(
 
     skill_profile = await service.get_skill_profile(user_id)
 
-    # ── Fetch history BEFORE saving the new user message ─────────────────────
-    # This ensures GPT-4o receives prior turns only, not the current message
-    # duplicated (history already contains it once we append below).
-    history = await service.get_chat_history(user_id, limit=10, session_id=request.session_id)
-
-    # Append current user message AFTER fetching history
     await service.append_chat_message(user_id, {
         "role": "user",
         "content": request.message,
     }, session_id=request.session_id)
 
-    # Add current user message to the history list for this request
-    history.append({"role": "user", "content": request.message})
+    history = await service.get_chat_history(user_id, limit=10, session_id=request.session_id)
 
     async def stream_and_save():
         full_response = []
@@ -287,13 +280,10 @@ async def tutor_chat(
 
         if full_response:
             try:
-                # ── Pass session_id when saving assistant reply ────────────────
-                # Without this, assistant messages get session_id=NULL and are
-                # excluded from get_chat_history, breaking multi-turn context.
                 await service.append_chat_message(user_id, {
                     "role": "assistant",
                     "content": "".join(full_response),
-                }, session_id=request.session_id)
+                })
             except Exception as e:
                 logger.error(f"Failed to save assistant message: {e}")
 
@@ -341,6 +331,24 @@ async def generate_quiz(
 
     num_questions = min(max(request.num_questions, 1), QUIZ_POOL_SIZE)
 
+    # ── Plan-based monthly quiz limit ─────────────────────────────────────────
+    plan = await service.get_user_plan(user_id)
+    quiz_limit = settings.get_quiz_limit(plan)
+    quiz_attempts = await service.get_quiz_attempts_this_month(user_id)
+
+    if quiz_attempts >= quiz_limit:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "quiz_limit_reached",
+                "message": f"You've used all {quiz_limit} quiz attempts included in your {plan.capitalize()} plan this month.",
+                "limit": quiz_limit,
+                "used": quiz_attempts,
+                "plan": plan,
+                "upgrade_required": plan == "free",
+            }
+        )
+
     # Get skill level for prompt context
     skill_profile = await service.get_skill_profile(user_id)
     skill_level = skill_profile.get("level", "intermediate")
@@ -366,6 +374,9 @@ async def generate_quiz(
         # Increment hit counter (fire and forget)
         background_tasks.add_task(_increment_hits, topic, difficulty)
 
+        # Record quiz attempt for rate limiting
+        background_tasks.add_task(service.record_quiz_attempt, user_id, topic)
+
         return {
             "quiz_id": str(uuid.uuid4()),
             "topic": request.topic,
@@ -379,6 +390,9 @@ async def generate_quiz(
 
     # Store in background so response isn't delayed by the DB write
     background_tasks.add_task(_store_pool, topic, difficulty, questions)
+
+    # Record quiz attempt for rate limiting
+    background_tasks.add_task(service.record_quiz_attempt, user_id, topic)
 
     return {
         "quiz_id": str(uuid.uuid4()),
