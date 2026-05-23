@@ -593,6 +593,13 @@ private fun PhotoLimitDialog(
         }
     )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Error banner
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ErrorBanner(message: String, onRetry: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
