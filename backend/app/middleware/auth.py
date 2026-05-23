@@ -95,6 +95,22 @@ async def get_current_user(request: Request) -> dict:
                     detail={"error": "token_invalid", "message": "Token missing required claims"},
                 )
 
+            logger.info(
+                f"Request authenticated — user_id={payload.get('sub')} "
+                f"email={payload.get('email')} "
+                f"path={request.url.path}"
+            )
+
+            # Set Sentry user context so every error is linked to the user
+            try:
+                import sentry_sdk as _sentry
+                _sentry.set_user({
+                    "id": payload.get("sub"),
+                    "email": payload.get("email"),
+                })
+            except Exception:
+                pass  # non-fatal if Sentry not configured
+
             return payload
 
         except ExpiredSignatureError:

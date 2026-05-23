@@ -31,6 +31,9 @@ class ProfileViewModel @Inject constructor(
     private val _deleteAccountState = MutableStateFlow<DeleteAccountState>(DeleteAccountState.Idle)
     val deleteAccountState: StateFlow<DeleteAccountState> = _deleteAccountState.asStateFlow()
 
+    private val _userEmail = MutableStateFlow<String>("")
+    val userEmail: StateFlow<String> = _userEmail.asStateFlow()
+
     init {
         loadProfile()
     }
@@ -43,6 +46,7 @@ class ProfileViewModel @Inject constructor(
                 _uiState.value = ProfileUiState.Error("Not signed in")
                 return@launch
             }
+            _userEmail.value = user.email ?: ""
             repository.getProfile(user.id).fold(
                 onSuccess = { _uiState.value = ProfileUiState.Success(it) },
                 onFailure = { _uiState.value = ProfileUiState.Error(it.message ?: "Failed to load profile") }
