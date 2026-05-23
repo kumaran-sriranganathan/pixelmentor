@@ -20,6 +20,7 @@ sealed class LoginUiState {
     data object Idle : LoginUiState()
     data object SigningIn : LoginUiState()
     data class Error(val message: String) : LoginUiState()
+    data class AwaitingEmailVerification(val email: String) : LoginUiState()
 }
 
 sealed class ForgotPasswordUiState {
@@ -75,12 +76,27 @@ class LoginViewModel @Inject constructor(
             _uiState.update { LoginUiState.SigningIn }
             try {
                 authRepository.signUp(email, password)
-                _uiState.update { LoginUiState.Idle }
+                // Don't navigate to home — user must verify email first
+                _uiState.update { LoginUiState.AwaitingEmailVerification(email) }
             } catch (e: Exception) {
                 Log.e("LoginViewModel", "Sign up failed", e)
                 _uiState.update { LoginUiState.Error(friendlyAuthError(e, isSignUp = true)) }
             }
         }
+    }
+
+    fun resendVerificationEmail(email: String) {
+        viewModelScope.launch {
+            try {
+                authRepository.sendPasswordResetEmail(email) // resend via reset flow
+            } catch (_: Exception) {
+                // silent — user can try again
+            }
+        }
+    }
+
+    fun resetToIdle() {
+        _uiState.update { LoginUiState.Idle }
     }
 
     // ── Forgot password ───────────────────────────────────────────────────────

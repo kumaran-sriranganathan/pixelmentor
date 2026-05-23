@@ -51,21 +51,32 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             PixelMentorTheme {
-                // Check if launched from a password reset deep link
-                val startRoute = if (intent?.data?.scheme == "io.supabase.pixelmentor") {
-                    Routes.RESET_PASSWORD
-                } else {
-                    Routes.LOGIN
+                // Determine start route based on deep link type
+                val deepLinkData = intent?.data
+                val startRoute = when {
+                    deepLinkData?.scheme == "io.supabase.pixelmentor" -> {
+                        val type = deepLinkData.getQueryParameter("type")
+                        when (type) {
+                            // Email verified — send to login so user can sign in
+                            "signup" -> Routes.LOGIN
+                            // Password reset — send to reset password screen
+                            "recovery" -> Routes.RESET_PASSWORD
+                            // Any other deep link — default to reset password
+                            else -> Routes.RESET_PASSWORD
+                        }
+                    }
+                    else -> Routes.LOGIN
                 }
                 PixelMentorNavHost(startRoute = startRoute)
             }
         }
     }
 
-    // Handle deep-link when app is already running
+    // Handle deep-link when app is already running in the background
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        recreate() // Recompose with the new intent so startRoute is re-evaluated
     }
 }
 

@@ -7,9 +7,12 @@ import android.net.Uri
 import com.pixelmentor.app.data.api.PixelMentorApiService
 import com.pixelmentor.app.domain.model.PhotoAnalysisRequest
 import com.pixelmentor.app.domain.model.PhotoAnalysisResponse
+import com.pixelmentor.app.domain.model.PhotoLimitException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import retrofit2.HttpException
 import java.io.ByteArrayOutputStream
 import java.util.Base64
 import javax.inject.Inject
@@ -21,10 +24,6 @@ class AnalysisRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
-    /**
-     * Compress the URI to a JPEG (max 1024px on the long edge, 85% quality),
-     * base64-encode it, then POST to the backend.
-     */
     suspend fun analyzePhoto(uri: Uri, authToken: String): Result<PhotoAnalysisResponse> =
         withContext(Dispatchers.IO) {
             try {
@@ -32,25 +31,41 @@ class AnalysisRepository @Inject constructor(
                 val request = PhotoAnalysisRequest(imageBase64 = base64)
                 val response = apiService.analyzePhoto("Bearer $authToken", request)
                 Result.success(response)
+            } catch (e: HttpException) {
+                if (e.code() == 429) {
+                    val body = e.response()?.errorBody()?.string() ?: ""
+                    try {
+                        val detail = JSONObject(body).getJSONObject("detail")
+                        throw PhotoLimitException(
+                            used = detail.optInt("used", 0),
+                            limit = detail.optInt("limit", 10),
+                            plan = detail.optString("plan", "free"),
+                            upgradeRequired = detail.optBoolean("upgrade_required", true)
+                        )
+                    } catch (limitEx: PhotoLimitException) {
+                        throw limitEx
+                    } catch (_: Exception) {
+                        return@withContext Result.failure(
+                            Exception("Monthly photo limit reached. Please upgrade to continue.")
+                        )
+                    }
+                }
+                Result.failure(e)
+            } catch (e: PhotoLimitException) {
+                Result.failure(e)
             } catch (e: Exception) {
                 Result.failure(e)
             }
         }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
     private fun uriToBase64(uri: Uri): String {
         val inputStream = context.contentResolver.openInputStream(uri)
             ?: error("Cannot open URI: $uri")
-
         val original = BitmapFactory.decodeStream(inputStream)
         inputStream.close()
-
         val scaled = scaleBitmap(original, maxDimension = 1024)
-
         val baos = ByteArrayOutputStream()
         scaled.compress(Bitmap.CompressFormat.JPEG, 85, baos)
-
         return Base64.getEncoder().encodeToString(baos.toByteArray())
     }
 
@@ -58,7 +73,6 @@ class AnalysisRepository @Inject constructor(
         val width = bitmap.width
         val height = bitmap.height
         if (width <= maxDimension && height <= maxDimension) return bitmap
-
         val ratio = maxDimension.toFloat() / maxOf(width, height)
         val newWidth = (width * ratio).toInt()
         val newHeight = (height * ratio).toInt()

@@ -39,6 +39,7 @@ import java.io.File
 @Composable
 fun PhotoAnalysisScreen(
     onNavigateToResults: () -> Unit,
+    onUpgrade: () -> Unit = {},
     viewModel: PhotoAnalysisViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -71,12 +72,27 @@ fun PhotoAnalysisScreen(
         }
     }
 
-    // Storage permission (pre-API 33)
     val storagePermission = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
         rememberPermissionState(Manifest.permission.READ_EXTERNAL_STORAGE) { granted ->
             if (granted) galleryLauncher.launch("image/*")
         }
     } else null
+
+    // Show limit reached dialog when state is LimitReached
+    if (uiState is AnalysisUiState.LimitReached) {
+        val limitState = uiState as AnalysisUiState.LimitReached
+        PhotoLimitDialog(
+            used = limitState.used,
+            limit = limitState.limit,
+            plan = limitState.plan,
+            upgradeRequired = limitState.upgradeRequired,
+            onUpgrade = {
+                viewModel.retryAnalysis()
+                onUpgrade()
+            },
+            onDismiss = { viewModel.retryAnalysis() }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -441,8 +457,142 @@ private fun AnalyzingOverlay(state: AnalysisUiState) {
 // Error banner
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Photo limit dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun ErrorBanner(message: String, onRetry: () -> Unit) {
+private fun PhotoLimitDialog(
+    used: Int,
+    limit: Int,
+    plan: String,
+    upgradeRequired: Boolean,
+    onUpgrade: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val planLabel = plan.replaceFirstChar { it.uppercase() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Outlined.CameraAlt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        },
+        title = {
+            Text(
+                "Monthly Limit Reached",
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "You've used $used of $limit photo analyses included in your $planLabel plan this month.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                // Usage bar
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LinearProgressIndicator(
+                        progress = { (used.toFloat() / limit).coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = MaterialTheme.colorScheme.error,
+                        trackColor = MaterialTheme.colorScheme.errorContainer,
+                    )
+                    Text(
+                        "$used / $limit used",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.End)
+                    )
+                }
+
+                if (upgradeRequired) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                "✨ Upgrade to Pro",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "Get 30 analyses/month, all advanced lessons, and unlimited quiz and tutor chat.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        "Your limit resets on the 1st of next month.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (upgradeRequired) {
+                Button(
+                    onClick = onUpgrade,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(
+                        Icons.Outlined.Star,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Upgrade Now", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(onClick = onDismiss) {
+                    Text("Got it")
+                }
+            }
+        },
+        dismissButton = {
+            if (upgradeRequired) {
+                TextButton(onClick = onDismiss) {
+                    Text("Maybe Later")
+                }
+            }
+        }
+    )
+}
     Card(
         modifier = Modifier
             .fillMaxWidth()

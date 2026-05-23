@@ -64,6 +64,17 @@ fun LoginScreen(
         if (authState is AuthState.Authenticated) onAuthenticated()
     }
 
+    // Show email verification screen after sign up
+    val currentUiState = uiState
+    if (currentUiState is LoginUiState.AwaitingEmailVerification) {
+        VerifyEmailScreen(
+            email = currentUiState.email,
+            onBackToLogin = { viewModel.resetToIdle() },
+            onResendEmail = { viewModel.resendVerificationEmail(currentUiState.email) }
+        )
+        return
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedBackground()
 
@@ -696,6 +707,163 @@ fun ResetPasswordScreen(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared composables
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Verify email screen (shown after sign up)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+fun VerifyEmailScreen(
+    email: String,
+    onBackToLogin: () -> Unit,
+    onResendEmail: () -> Unit,
+) {
+    var resendCooldown by remember { mutableStateOf(0) }
+    var resendSent by remember { mutableStateOf(false) }
+
+    LaunchedEffect(resendCooldown) {
+        if (resendCooldown > 0) {
+            kotlinx.coroutines.delay(1000)
+            resendCooldown--
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AnimatedBackground()
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Icon
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.tertiary
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Outlined.MarkEmailUnread,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = Color.White
+                )
+            }
+
+            Spacer(Modifier.height(32.dp))
+
+            Text(
+                "Check your inbox",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "We've sent a verification link to",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Text(
+                email,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                "Click the link in the email to verify your account and get started.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(40.dp))
+
+            // Resend button with cooldown
+            if (resendSent) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        "Verification email sent!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            } else {
+                OutlinedButton(
+                    onClick = {
+                        if (resendCooldown == 0) {
+                            onResendEmail()
+                            resendSent = true
+                            resendCooldown = 30
+                            // Reset "sent" message after cooldown
+                        }
+                    },
+                    enabled = resendCooldown == 0,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.Email,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (resendCooldown > 0) "Resend in ${resendCooldown}s"
+                        else "Resend verification email",
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            TextButton(onClick = onBackToLogin) {
+                Icon(
+                    Icons.Outlined.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Back to Sign In")
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Animated background
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
