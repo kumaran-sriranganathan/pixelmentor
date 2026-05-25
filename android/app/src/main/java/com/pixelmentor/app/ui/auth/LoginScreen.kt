@@ -21,13 +21,18 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Intent
+import android.net.Uri
 import com.pixelmentor.app.domain.model.AuthState
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,13 +52,15 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var isSignUp by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var ageConfirmed by remember { mutableStateOf(false) }
 
     val passwordFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val submit = {
         if (email.isNotBlank() && password.isNotBlank() &&
-            uiState !is LoginUiState.SigningIn) {
+            uiState !is LoginUiState.SigningIn &&
+            (!isSignUp || ageConfirmed)) {
             keyboardController?.hide()
             if (isSignUp) viewModel.signUp(email, password)
             else viewModel.signInWithEmail(email, password)
@@ -214,11 +221,39 @@ fun LoginScreen(
                                 }
                             }
 
+                            // Age confirmation checkbox — only shown on Sign Up tab
+                            if (isSignUp) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        .clickable { ageConfirmed = !ageConfirmed }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = ageConfirmed,
+                                        onCheckedChange = { ageConfirmed = it },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                    Text(
+                                        text = "I confirm I am 13 years of age or older",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
                             // Primary CTA button
                             Button(
                                 onClick = { submit() },
                                 enabled = uiState !is LoginUiState.SigningIn &&
-                                        email.isNotBlank() && password.isNotBlank(),
+                                        email.isNotBlank() && password.isNotBlank() &&
+                                        (!isSignUp || ageConfirmed),
                                 modifier = Modifier.fillMaxWidth().height(54.dp),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(
@@ -240,6 +275,9 @@ fun LoginScreen(
                                     )
                                 }
                             }
+
+                            // Legal links — ToS and Privacy Policy
+                            LegalLinksText(isSignUp = isSignUp)
 
                             // Divider
                             Row(
@@ -860,6 +898,53 @@ fun VerifyEmailScreen(
             }
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legal links — ToS and Privacy Policy
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun LegalLinksText(isSignUp: Boolean) {
+    val context = LocalContext.current
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    val annotatedText = buildAnnotatedString {
+        withStyle(SpanStyle(color = mutedColor, fontSize = 11.sp)) {
+            if (isSignUp) append("By creating an account you agree to our ")
+            else append("By signing in you agree to our ")
+        }
+        pushStringAnnotation(tag = "TOS", annotation = "https://pixelmentor.app/terms.html")
+        withStyle(SpanStyle(color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)) {
+            append("Terms of Service")
+        }
+        pop()
+        withStyle(SpanStyle(color = mutedColor, fontSize = 11.sp)) {
+            append(" and ")
+        }
+        pushStringAnnotation(tag = "PRIVACY", annotation = "https://pixelmentor.app/privacy.html")
+        withStyle(SpanStyle(color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)) {
+            append("Privacy Policy")
+        }
+        pop()
+    }
+
+    androidx.compose.foundation.text.ClickableText(
+        text = annotatedText,
+        modifier = Modifier.fillMaxWidth(),
+        style = androidx.compose.ui.text.TextStyle(textAlign = TextAlign.Center),
+        onClick = { offset ->
+            annotatedText.getStringAnnotations(tag = "TOS", start = offset, end = offset)
+                .firstOrNull()?.let {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.item)))
+                }
+            annotatedText.getStringAnnotations(tag = "PRIVACY", start = offset, end = offset)
+                .firstOrNull()?.let {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.item)))
+                }
+        }
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
