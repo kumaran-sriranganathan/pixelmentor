@@ -259,12 +259,19 @@ async def tutor_chat(
 
     skill_profile = await service.get_skill_profile(user_id)
 
+    # ── Fetch history BEFORE saving the new user message ─────────────────────
+    # If we save first then fetch, the current message appears twice in the
+    # context sent to GPT-4o (once in history, once appended below).
+    history = await service.get_chat_history(user_id, limit=10, session_id=request.session_id)
+
+    # Save user message AFTER fetching history
     await service.append_chat_message(user_id, {
         "role": "user",
         "content": request.message,
     }, session_id=request.session_id)
 
-    history = await service.get_chat_history(user_id, limit=10, session_id=request.session_id)
+    # Manually append current message to history for this request
+    history.append({"role": "user", "content": request.message})
 
     async def stream_and_save():
         full_response = []
@@ -280,10 +287,13 @@ async def tutor_chat(
 
         if full_response:
             try:
+                # ── Pass session_id when saving assistant reply ────────────────
+                # Without this, assistant messages get session_id=NULL and are
+                # excluded from get_chat_history, breaking multi-turn context.
                 await service.append_chat_message(user_id, {
                     "role": "assistant",
                     "content": "".join(full_response),
-                })
+                }, session_id=request.session_id)
             except Exception as e:
                 logger.error(f"Failed to save assistant message: {e}")
 
