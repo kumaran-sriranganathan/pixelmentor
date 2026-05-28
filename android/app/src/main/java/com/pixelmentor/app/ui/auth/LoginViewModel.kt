@@ -148,6 +148,12 @@ class LoginViewModel @Inject constructor(
             _resetPasswordState.update { ResetPasswordUiState.Saving }
             try {
                 authRepository.updatePassword(newPassword)
+                // ── Sign out after reset ──────────────────────────────────────
+                // Force the user to log in with their new password rather than
+                // auto-logging in via the recovery session. This is the safer
+                // pattern — it confirms the user knows their new credentials
+                // and prevents session confusion on shared or compromised devices.
+                authRepository.signOut()
                 _resetPasswordState.update { ResetPasswordUiState.Success }
             } catch (e: Exception) {
                 Log.e("LoginViewModel", "Update password failed", e)

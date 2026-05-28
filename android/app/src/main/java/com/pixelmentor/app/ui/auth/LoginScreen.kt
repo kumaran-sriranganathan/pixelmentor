@@ -573,7 +573,12 @@ fun ResetPasswordScreen(
     }
 
     LaunchedEffect(state) {
-        if (state is ResetPasswordUiState.Success) onPasswordReset()
+        if (state is ResetPasswordUiState.Success) {
+            // Brief pause so the user sees the success state before being
+            // redirected to login to sign in with their new password
+            kotlinx.coroutines.delay(1500)
+            onPasswordReset()
+        }
     }
 
     Scaffold(
@@ -733,7 +738,8 @@ fun ResetPasswordScreen(
                     keyboardController?.hide()
                     viewModel.updatePassword(newPassword)
                 },
-                enabled = isValid && state !is ResetPasswordUiState.Saving,
+                enabled = isValid && state !is ResetPasswordUiState.Saving
+                        && state !is ResetPasswordUiState.Success,
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 shape = RoundedCornerShape(14.dp)
             ) {
@@ -745,6 +751,39 @@ fun ResetPasswordScreen(
                     )
                 } else {
                     Text("Update Password", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
+
+            // Success banner — shown briefly before redirecting to login
+            AnimatedVisibility(visible = state is ResetPasswordUiState.Success) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column {
+                        Text(
+                            "Password updated!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "Please sign in with your new password.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
             }
         }
