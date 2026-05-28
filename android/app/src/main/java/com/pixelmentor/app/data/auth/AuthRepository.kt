@@ -29,7 +29,6 @@ class AuthRepository @Inject constructor(
 
     suspend fun getValidToken(): String? {
         return try {
-            // First try the in-memory state (fast path)
             currentToken ?: supabaseAuthManager.getCurrentUser()?.accessToken
         } catch (e: Exception) {
             null
@@ -50,9 +49,17 @@ class AuthRepository @Inject constructor(
         supabaseAuthManager.sendPasswordResetEmail(email)
     }
 
+    /**
+     * Called from MainActivity when a recovery deep link is received.
+     * Establishes the session from the deep link tokens BEFORE updatePassword()
+     * is called — without this the JWT has no sub claim and the update fails.
+     */
+    suspend fun handlePasswordResetDeepLink(deepLinkUrl: String) {
+        supabaseAuthManager.handlePasswordResetDeepLink(deepLinkUrl)
+    }
+
     suspend fun updatePassword(newPassword: String) {
         supabaseAuthManager.updatePassword(newPassword)
-        // Re-fetch the session so the auth state reflects the updated user
         val user = supabaseAuthManager.getCurrentUser()
         if (user != null) _authState.value = AuthState.Authenticated(user)
     }

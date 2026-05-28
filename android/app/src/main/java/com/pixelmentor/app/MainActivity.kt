@@ -25,6 +25,11 @@ import com.pixelmentor.app.ui.navigation.AnalysisRoutes
 import com.pixelmentor.app.ui.navigation.PixelMentorBottomBar
 import com.pixelmentor.app.ui.navigation.analysisGraph
 import dagger.hilt.android.AndroidEntryPoint
+import com.pixelmentor.app.data.auth.AuthRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 // ── Navigation routes ─────────────────────────────────────────────────────────
 
@@ -46,9 +51,28 @@ object Routes {
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    @Inject
+    lateinit var authRepository: AuthRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // If this Activity was launched by a password reset deep link,
+        // exchange the tokens from the URL fragment for a valid session
+        // BEFORE the UI renders — otherwise updatePassword() fails with
+        // "missing sub claim" because it runs against the anon key.
+        intent?.data?.let { uri ->
+            if (uri.scheme == "io.supabase.pixelmentor") {
+                val fullUrl = uri.toString()
+                if (fullUrl.contains("type=recovery") || fullUrl.contains("access_token=")) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        authRepository.handlePasswordResetDeepLink(fullUrl)
+                    }
+                }
+            }
+        }
+
         setContent {
             PixelMentorTheme {
                 // Determine start route based on deep link type
@@ -76,7 +100,18 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        recreate() // Recompose with the new intent so startRoute is re-evaluated
+        // Handle recovery deep link session exchange when app is already open
+        intent.data?.let { uri ->
+            if (uri.scheme == "io.supabase.pixelmentor") {
+                val fullUrl = uri.toString()
+                if (fullUrl.contains("type=recovery") || fullUrl.contains("access_token=")) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        authRepository.handlePasswordResetDeepLink(fullUrl)
+                    }
+                }
+            }
+        }
+        recreate()
     }
 }
 
@@ -117,7 +152,10 @@ private fun PixelMentorNavHost(startRoute: String = Routes.LOGIN) {
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(Routes.RESET_PASSWORD) { inclusive = true }
                         }
-                    }
+                    },
+                    // Pass the full deep link URL so ResetPasswordScreen can
+                    // exchange the recovery tokens for a valid session
+                    deepLinkUrl = intent?.data?.toString()
                 )
             }
 

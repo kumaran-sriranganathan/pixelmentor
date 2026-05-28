@@ -551,6 +551,7 @@ fun ForgotPasswordScreen(
 @Composable
 fun ResetPasswordScreen(
     onPasswordReset: () -> Unit,
+    deepLinkUrl: String? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.resetPasswordState.collectAsStateWithLifecycle()
@@ -563,6 +564,13 @@ fun ResetPasswordScreen(
 
     val passwordsMatch = newPassword == confirmPassword
     val isValid = newPassword.length >= 6 && passwordsMatch
+
+    // Exchange the recovery tokens from the deep link for a valid session
+    // BEFORE the user taps Update Password — without this the JWT has no
+    // sub claim and the update fails with bad_jwt.
+    LaunchedEffect(deepLinkUrl) {
+        deepLinkUrl?.let { viewModel.handlePasswordResetDeepLink(it) }
+    }
 
     LaunchedEffect(state) {
         if (state is ResetPasswordUiState.Success) onPasswordReset()

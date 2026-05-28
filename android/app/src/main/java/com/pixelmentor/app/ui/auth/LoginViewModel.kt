@@ -128,6 +128,21 @@ class LoginViewModel @Inject constructor(
 
     // ── Reset password (after deep-link) ──────────────────────────────────────
 
+    /**
+     * Exchanges the recovery tokens from the deep link URL for a valid session.
+     * Called from ResetPasswordScreen via LaunchedEffect as soon as the screen
+     * renders — must complete before the user taps Update Password.
+     */
+    fun handlePasswordResetDeepLink(deepLinkUrl: String) {
+        viewModelScope.launch {
+            try {
+                authRepository.handlePasswordResetDeepLink(deepLinkUrl)
+            } catch (e: Exception) {
+                Log.e("LoginViewModel", "Failed to handle reset deep link", e)
+            }
+        }
+    }
+
     fun updatePassword(newPassword: String) {
         viewModelScope.launch {
             _resetPasswordState.update { ResetPasswordUiState.Saving }
