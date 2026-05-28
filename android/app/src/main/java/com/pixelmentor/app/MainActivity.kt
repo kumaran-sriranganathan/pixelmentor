@@ -147,6 +147,8 @@ private fun PixelMentorNavHost(startRoute: String = Routes.LOGIN) {
             }
 
             composable(Routes.RESET_PASSWORD) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val activity = context as? android.app.Activity
                 ResetPasswordScreen(
                     onPasswordReset = {
                         navController.navigate(Routes.LOGIN) {
@@ -155,7 +157,7 @@ private fun PixelMentorNavHost(startRoute: String = Routes.LOGIN) {
                     },
                     // Pass the full deep link URL so ResetPasswordScreen can
                     // exchange the recovery tokens for a valid session
-                    deepLinkUrl = intent?.data?.toString()
+                    deepLinkUrl = activity?.intent?.data?.toString()
                 )
             }
 
