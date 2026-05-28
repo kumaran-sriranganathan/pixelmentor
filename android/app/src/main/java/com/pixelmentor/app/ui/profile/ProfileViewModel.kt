@@ -34,6 +34,10 @@ class ProfileViewModel @Inject constructor(
     private val _userEmail = MutableStateFlow<String>("")
     val userEmail: StateFlow<String> = _userEmail.asStateFlow()
 
+    // Track which user ID the current state belongs to.
+    // If the authenticated user changes we reload immediately.
+    private var loadedUserId: String? = null
+
     init {
         loadProfile()
     }
@@ -41,12 +45,29 @@ class ProfileViewModel @Inject constructor(
     fun loadProfile() {
         viewModelScope.launch {
             _uiState.value = ProfileUiState.Loading
+
             val user = authManager.getCurrentUser()
             if (user == null) {
                 _uiState.value = ProfileUiState.Error("Not signed in")
+                loadedUserId = null
+                _userEmail.value = ""
                 return@launch
             }
+
+            // If we already loaded for this user skip the network call
+            if (loadedUserId == user.id && _uiState.value is ProfileUiState.Success) {
+                return@launch
+            }
+
+            // Clear stale state from a previous user before loading
+            if (loadedUserId != null && loadedUserId != user.id) {
+                _uiState.value = ProfileUiState.Loading
+                _userEmail.value = ""
+            }
+
+            loadedUserId = user.id
             _userEmail.value = user.email ?: ""
+
             repository.getProfile(user.id).fold(
                 onSuccess = { _uiState.value = ProfileUiState.Success(it) },
                 onFailure = { _uiState.value = ProfileUiState.Error(it.message ?: "Failed to load profile") }
@@ -56,6 +77,13 @@ class ProfileViewModel @Inject constructor(
 
     fun signOut(onSignedOut: () -> Unit) {
         viewModelScope.launch {
+            // ── Clear all state before signing out ────────────────────────────
+            // This prevents the next user seeing this user's profile data
+            // if the ViewModel instance is reused.
+            _uiState.value = ProfileUiState.Loading
+            _userEmail.value = ""
+            loadedUserId = null
+
             authManager.signOut()
             onSignedOut()
         }
@@ -71,7 +99,10 @@ class ProfileViewModel @Inject constructor(
             }
             repository.deleteAccount(user.id).fold(
                 onSuccess = {
-                    // Sign out locally after successful deletion
+                    // Clear state then sign out
+                    _uiState.value = ProfileUiState.Loading
+                    _userEmail.value = ""
+                    loadedUserId = null
                     authManager.signOut()
                     _deleteAccountState.value = DeleteAccountState.Success
                     onDeleted()

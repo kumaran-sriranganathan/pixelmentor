@@ -5,7 +5,8 @@ import com.pixelmentor.app.domain.model.UserProfile
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@Singleton
+// Note: NOT @Singleton — a fresh instance is used per ViewModel injection
+// so there is no risk of one user's profile being shown to another.
 class ProfileRepository @Inject constructor(
     private val apiService: PixelMentorApiService
 ) {

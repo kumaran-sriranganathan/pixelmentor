@@ -145,17 +145,23 @@ private fun PixelMentorNavHost(startRoute: String = Routes.LOGIN) {
             composable(Routes.TUTOR) { TutorScreen() }
 
             composable(Routes.PROFILE) {
+                val activity = (androidx.compose.ui.platform.LocalContext.current as? android.app.Activity)
                 ProfileScreen(
                     onSignOut = {
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
+                        // Recreate the Activity so Hilt destroys all ViewModel
+                        // instances — prevents the next user seeing stale profile
+                        // data from the previous session.
+                        activity?.recreate()
                     },
                     onUpgrade = { navController.navigate(Routes.UPGRADE) },
                     onAccountDeleted = {
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
+                        activity?.recreate()
                     }
                 )
             }
