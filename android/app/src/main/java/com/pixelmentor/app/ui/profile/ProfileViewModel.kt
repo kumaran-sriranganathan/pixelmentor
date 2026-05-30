@@ -70,7 +70,22 @@ class ProfileViewModel @Inject constructor(
 
             repository.getProfile(user.id).fold(
                 onSuccess = { _uiState.value = ProfileUiState.Success(it) },
-                onFailure = { _uiState.value = ProfileUiState.Error(it.message ?: "Failed to load profile") }
+                onFailure = { error ->
+                    // ── Distinguish timeout vs generic failure ─────────────────
+                    // Gives the user an actionable message rather than a raw
+                    // exception string, and avoids infinite spinner on cold starts.
+                    val message = when {
+                        error is java.net.SocketTimeoutException ||
+                        error.message?.contains("timeout", ignoreCase = true) == true ->
+                            "Connection timed out. Check your internet and tap Retry."
+                        error.message?.contains("504") == true ->
+                            "Server took too long to respond. Please retry in a moment."
+                        error.message?.contains("Unable to resolve host") == true ->
+                            "No internet connection. Please check your network."
+                        else -> error.message ?: "Failed to load profile"
+                    }
+                    _uiState.value = ProfileUiState.Error(message)
+                }
             )
         }
     }

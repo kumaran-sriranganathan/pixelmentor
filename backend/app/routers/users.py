@@ -2,6 +2,7 @@
 # routers/users.py — User profile endpoints (Supabase-backed)
 ###############################################################################
 
+import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -31,10 +32,26 @@ async def get_user(
         raise HTTPException(status_code=403, detail="Access denied")
 
     supabase = SupabaseService()
-    profile = await supabase.get_user_profile(
-        user_id=user_id,
-        display_name=current_user.get("name", "PixelMentor User"),
-    )
+
+    # ── Guard against Railway cold-start / Supabase hangs ─────────────────────
+    # Without a timeout the coroutine can hang indefinitely, causing the Android
+    # client to show a perpetual spinner. We fail fast with a 504 so the app can
+    # show a "Retry" button instead.
+    try:
+        profile = await asyncio.wait_for(
+            supabase.get_user_profile(
+                user_id=user_id,
+                display_name=current_user.get("name", "PixelMentor User"),
+            ),
+            timeout=8.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(f"Profile fetch timed out for user_id={user_id}")
+        raise HTTPException(
+            status_code=504,
+            detail="Profile load timed out. Please try again.",
+        )
+
     return UserProfile(**profile)
 
 
