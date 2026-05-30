@@ -41,13 +41,14 @@ fun ProfileScreen(
     val deleteAccountState by viewModel.deleteAccountState.collectAsState()
     val userEmail by viewModel.userEmail.collectAsState()
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Profile", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { viewModel.signOut(onSignOut) }) {
+                    IconButton(onClick = { showSignOutDialog = true }) {
                         Icon(
                             Icons.Outlined.Logout,
                             contentDescription = "Sign out",
@@ -100,6 +101,43 @@ fun ProfileScreen(
                     modifier = Modifier.padding(padding)
                 )
             }
+        }
+
+        // ── Sign out confirmation dialog ───────────────────────────────────
+        if (showSignOutDialog) {
+            AlertDialog(
+                onDismissRequest = { showSignOutDialog = false },
+                icon = {
+                    Icon(
+                        Icons.Outlined.Logout,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                title = {
+                    Text("Sign Out?", fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Text(
+                        "You'll need to sign in again to access PixelMentor.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showSignOutDialog = false
+                        viewModel.signOut(onSignOut)
+                    }) {
+                        Text("Sign Out")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSignOutDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         // ── Delete confirmation dialog ─────────────────────────────────────

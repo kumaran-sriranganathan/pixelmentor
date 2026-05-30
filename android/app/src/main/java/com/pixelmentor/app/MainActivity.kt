@@ -182,7 +182,11 @@ private fun PixelMentorNavHost(startRoute: String = Routes.LOGIN) {
                 )
             }
 
-            composable(Routes.TUTOR) { TutorScreen() }
+            composable(Routes.TUTOR) {
+                TutorScreen(
+                    onUpgrade = { navController.navigate(Routes.UPGRADE) }
+                )
+            }
 
             composable(Routes.PROFILE) {
                 val activity = (androidx.compose.ui.platform.LocalContext.current as? android.app.Activity)
