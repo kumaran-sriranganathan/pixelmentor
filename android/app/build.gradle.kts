@@ -24,12 +24,12 @@ fun secret(key: String): String {
 
 android {
     namespace = "com.pixelmentor.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.pixelmentor.app"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 14
         versionName = "1.1.4"
 
@@ -69,8 +69,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 }
 
