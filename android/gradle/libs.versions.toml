@@ -5,9 +5,12 @@
 # Revisit when the ecosystem (Hilt, KSP, third-party plugins) stabilises on 9.x
 agp = "8.9.2"
 
-# Kotlin 2.3.21 — latest stable; KSP must match Kotlin major.minor exactly
-kotlin = "2.3.21"
-ksp   = "2.3.21-1.0.28"
+# Kotlin 2.1.21 + KSP 2.1.21-1.0.28 — confirmed published and compatible pair.
+# KSP changed its versioning scheme at 2.3.x (dropping the Kotlin mirror format)
+# so jumping to Kotlin 2.3.21 requires KSP 2.3.7 instead — a separate migration.
+# Staying on 2.1.21 is the safe patch bump from your original 2.0.21.
+kotlin = "2.1.21"
+ksp   = "2.1.21-1.0.28"
 
 # ── DI ────────────────────────────────────────────────────────────────────────
 hilt = "2.57.1"
