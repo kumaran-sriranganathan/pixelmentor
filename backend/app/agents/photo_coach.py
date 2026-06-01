@@ -176,17 +176,29 @@ async def embed_and_recommend(state: PhotoCoachState) -> PhotoCoachState:
     query_text = " ".join([f["text"] for f in feedback_items[:3]])
 
     try:
-        # Use Supabase full-text search — already set up with tsvector trigger
         from app.utils.supabase_client import get_supabase_client
         supabase = get_supabase_client()
 
-        # Search for lessons matching the weakness categories
         search_term = " | ".join(categories) if categories else query_text[:50]
-        result = supabase.table("lessons") \
-            .select("id, title, description, duration_minutes, skill_level, thumbnail_url") \
-            .text_search("search_vector", search_term, config="english") \
-            .limit(3) \
-            .execute()
+
+        # ── supabase-py v2 removed the `config` kwarg from text_search() ─────
+        # Use the plain two-argument form. If the search_vector column doesn't
+        # exist or FTS fails for any reason, fall back to a simple ilike search
+        # on title so the user always gets some lesson recommendations.
+        try:
+            result = supabase.table("lessons") \
+                .select("id, title, description, duration_minutes, skill_level, thumbnail_url") \
+                .text_search("search_vector", search_term) \
+                .limit(3) \
+                .execute()
+        except Exception:
+            # Fallback: plain title search using the first category keyword
+            fallback_term = categories[0] if categories else query_text[:20]
+            result = supabase.table("lessons") \
+                .select("id, title, description, duration_minutes, skill_level, thumbnail_url") \
+                .ilike("title", f"%{fallback_term}%") \
+                .limit(3) \
+                .execute()
 
         lessons = [
             {

@@ -7,6 +7,7 @@ import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.createSupabaseClient
+import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -122,17 +123,22 @@ class SupabaseAuthManager @Inject constructor() {
 
     suspend fun signOut() {
         try {
-            client.auth.signOut()
+            // ── Timeout the network call — it must not block forever ──────────
+            // client.auth.signOut() makes a server-side token revocation request.
+            // If Railway or Supabase is slow, this hangs and the user is stuck on
+            // the profile screen with no feedback. We give it 3 seconds — if it
+            // doesn't complete, we still clear the local session below.
+            withTimeout(3_000) {
+                client.auth.signOut()
+            }
         } catch (_: Exception) {
-            // Network call to invalidate server session — failure is non-fatal
+            // Timeout, network error, or already-invalid session — non-fatal.
+            // The local session is cleared in the finally block regardless.
         } finally {
-            // ── Clear the in-memory session cache immediately ─────────────────
-            // client.auth.signOut() makes a network call but the local session
-            // object remains in memory until the SDK clears it asynchronously.
-            // clearSession() wipes it synchronously so getCurrentUser() returns
-            // null the instant signOut() returns — closing the race window where
-            // AuthInterceptor.getValidToken() reads the stale cached token and
-            // re-authenticates the user after they've signed out.
+            // ── Always clear local session immediately ────────────────────────
+            // This is the critical step. Whether or not the server call succeeded,
+            // wiping the in-memory cache here ensures getCurrentUser() returns
+            // null instantly, so no subsequent API call can attach a stale token.
             client.auth.clearSession()
         }
     }
