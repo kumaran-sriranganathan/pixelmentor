@@ -67,8 +67,20 @@ fun LoginScreen(
         }
     }
 
+    // Only navigate away once auth state has settled to Authenticated.
+    // Guarding against Loading prevents a race where a fresh LoginViewModel
+    // briefly sees the old session before signOut() has fully cleared it.
     LaunchedEffect(authState) {
         if (authState is AuthState.Authenticated) onAuthenticated()
+    }
+
+    // While auth state is still resolving, show a full-screen loader so the
+    // login form never flashes before we know whether the user is signed in.
+    if (authState is AuthState.Loading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
     }
 
     // Show email verification screen after sign up
