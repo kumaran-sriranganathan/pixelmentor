@@ -107,6 +107,10 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    // kotlin-metadata-jvm workaround: Hilt's annotation processor needs this
+    // to read Kotlin 2.3.x class metadata when running under AGP 8.x.
+    // Without it hiltJavaCompileDebug fails with "maximum supported version is 2.2.0".
+    ksp("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.21")
 
     // ── Retrofit 3.0.0 + OkHttp 4.12.0 ──────────────────────────────────────
     // Retrofit 3.x requires OkHttp 4.12+ (written in Kotlin); binary-compatible

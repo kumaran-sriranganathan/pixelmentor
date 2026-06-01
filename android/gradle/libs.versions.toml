@@ -12,7 +12,11 @@ kotlin = "2.3.21"
 ksp   = "2.3.7"
 
 # ── DI ────────────────────────────────────────────────────────────────────────
-hilt = "2.57.1"
+# Hilt 2.58 — critical version:
+# - Last version whose Gradle plugin supports AGP 8.x (2.59+ requires AGP 9)
+# - First version that includes kotlin-metadata-jvm support for Kotlin 2.3.x
+#   metadata (2.57.x only supports up to 2.2.0, causing hiltJavaCompileDebug failure)
+hilt = "2.58"
 
 # ── Compose & UI ─────────────────────────────────────────────────────────────
 # BOM 2026.05.01 — May 2026 stable train (Compose 1.11.x core)
