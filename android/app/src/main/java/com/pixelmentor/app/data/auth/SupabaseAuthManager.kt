@@ -121,6 +121,19 @@ class SupabaseAuthManager @Inject constructor() {
     }
 
     suspend fun signOut() {
-        client.auth.signOut()
+        try {
+            client.auth.signOut()
+        } catch (_: Exception) {
+            // Network call to invalidate server session — failure is non-fatal
+        } finally {
+            // ── Clear the in-memory session cache immediately ─────────────────
+            // client.auth.signOut() makes a network call but the local session
+            // object remains in memory until the SDK clears it asynchronously.
+            // clearSession() wipes it synchronously so getCurrentUser() returns
+            // null the instant signOut() returns — closing the race window where
+            // AuthInterceptor.getValidToken() reads the stale cached token and
+            // re-authenticates the user after they've signed out.
+            client.auth.clearSession()
+        }
     }
 }

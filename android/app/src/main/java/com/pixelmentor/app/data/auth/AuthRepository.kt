@@ -44,6 +44,12 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun getValidToken(): String? {
+        // ── Guard: never return a token once signed out ───────────────────────
+        // Without this, AuthInterceptor can still read a token from the Supabase
+        // in-memory cache between signOut() being called and clearSession()
+        // completing, causing post-signout requests to succeed and keeping the
+        // user authenticated on the Lessons screen.
+        if (_authState.value is AuthState.Unauthenticated) return null
         return try {
             currentToken ?: supabaseAuthManager.getCurrentUser()?.accessToken
         } catch (e: Exception) {
