@@ -1,15 +1,15 @@
 [versions]
 # ── Build toolchain ───────────────────────────────────────────────────────────
 # AGP 8.9.2 — staying on 8.x; AGP 9.0 has breaking DSL/variant API changes
-# that require significant migration effort (applicationVariants removed, etc.)
-# Revisit when the ecosystem (Hilt, KSP, third-party plugins) stabilises on 9.x
 agp = "8.9.2"
 
-# Kotlin 2.1.21 + KSP 2.1.21-2.0.1 — confirmed published on Maven Central.
-# KSP versioning format for 2.1.x is kotlin-version-ksp-api-version (e.g. 2.0.1/2.0.2)
-# NOT the 1.0.x format used in older releases.
-kotlin = "2.1.21"
-ksp   = "2.1.21-2.0.1"
+# Kotlin 2.3.21 + KSP 2.3.7
+# supabase-kt 3.3.0 and ktor 3.4.0 were compiled with Kotlin 2.3.0, so the
+# project Kotlin version must be >= 2.3.x. KSP changed its versioning scheme
+# at 2.3.x — it is now independently versioned (2.3.7), not tied to Kotlin's
+# patch version like the old 2.1.x-1.0.28 format was.
+kotlin = "2.3.21"
+ksp   = "2.3.7"
 
 # ── DI ────────────────────────────────────────────────────────────────────────
 hilt = "2.57.1"
