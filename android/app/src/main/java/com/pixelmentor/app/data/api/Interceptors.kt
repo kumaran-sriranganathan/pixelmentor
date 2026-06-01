@@ -56,7 +56,12 @@ class TokenRefreshInterceptor(
                 response.close()
                 handleTokenExpired(chain)
             }
-            // token_invalid / token_missing — not recoverable by refresh, pass through
+            "token_invalid", "token_missing" -> {
+                // Not recoverable by refresh — notify immediately and pass through
+                runBlocking { authRepository.notifyForceLogout() }
+                response
+            }
+            // Unknown 401 — pass through and let the ViewModel handle it
             else -> response
         }
     }
@@ -70,9 +75,22 @@ class TokenRefreshInterceptor(
             val retryRequest = chain.request().withBearerToken(newToken)
             chain.proceed(retryRequest)
         } else {
-            // Silent refresh failed — proceed without token so the 401
-            // propagates to the ViewModel which redirects to login
-            chain.proceed(chain.request())
+            // ── Refresh failed — session is unrecoverable ─────────────────────
+            // notifyForceLogout() has already been called inside refreshToken(),
+            // which sets authState = Unauthenticated and emits the forceLogout
+            // signal. MainActivity will navigate to Login with a friendly message.
+            //
+            // We return a synthetic 401 here rather than retrying without a token.
+            // Retrying unauthenticated would hammer the backend on every queued
+            // request, eventually triggering a real 429 rate-limit — which is
+            // exactly the confusing error users were seeing after sign-out.
+            okhttp3.Response.Builder()
+                .request(chain.request())
+                .protocol(okhttp3.Protocol.HTTP_1_1)
+                .code(401)
+                .message("Session expired")
+                .body(okhttp3.ResponseBody.create(null, ""))
+                .build()
         }
     }
 
