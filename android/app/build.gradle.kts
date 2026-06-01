@@ -17,7 +17,6 @@ val localProps = Properties().apply {
 }
 
 fun secret(key: String): String {
-    // CI injects as environment variable; local dev uses local.properties
     return System.getenv(key)
         ?: localProps.getProperty(key)
         ?: error("Missing required secret: $key — add to local.properties or CI environment")
@@ -36,13 +35,11 @@ android {
 
         buildConfigField("String", "ENTRA_CLIENT_ID", "\"51c1a8ba-2b07-4d99-bd91-4652081f7b41\"")
         buildConfigField("String", "ENTRA_TENANT_ID", "\"260b8d50-600d-47d4-b73c-e094c1674813\"")
-        buildConfigField("String", "API_BASE_URL_DEV", "\"https://pixelmentor-production.up.railway.app/\"")
+        buildConfigField("String", "API_BASE_URL_DEV",  "\"https://pixelmentor-production.up.railway.app/\"")
         buildConfigField("String", "API_BASE_URL_PROD", "\"https://pixelmentor-production.up.railway.app/\"")
-        // Supabase URL is not sensitive — it's visible in network traffic
         buildConfigField("String", "SUPABASE_URL", "\"https://sevikgqyffziljftqabd.supabase.co\"")
-        // Secrets — injected from local.properties (dev) or CI environment variables (CI/CD)
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
-        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${secret("GOOGLE_WEB_CLIENT_ID")}\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY",     "\"${secret("SUPABASE_ANON_KEY")}\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID",  "\"${secret("GOOGLE_WEB_CLIENT_ID")}\"")
     }
 
     buildTypes {
@@ -78,48 +75,59 @@ android {
 }
 
 dependencies {
-    // Compose BOM
+    // ── Compose BOM (May 2026 — Compose 1.11.x) ───────────────────────────────
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.icons.extended)
-    implementation("io.coil-kt:coil-compose:2.6.0")
-    implementation("com.google.accompanist:accompanist-permissions:0.34.0")
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     debugImplementation(libs.compose.ui.tooling)
 
-    // Activity + Navigation
+    // ── Image loading ─────────────────────────────────────────────────────────
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // ── Permissions ───────────────────────────────────────────────────────────
+    // Accompanist 0.37.0 — aligned with Compose 1.11.x
+    implementation("com.google.accompanist:accompanist-permissions:0.37.0")
+
+    // ── Hilt navigation ───────────────────────────────────────────────────────
+    implementation("androidx.hilt:hilt-navigation-compose:1.3.0")
+
+    // ── Activity + Navigation ─────────────────────────────────────────────────
     implementation(libs.activity.compose)
     implementation(libs.navigation.compose)
 
-    // Lifecycle
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
 
-    // Hilt
+    // ── Hilt ──────────────────────────────────────────────────────────────────
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
-    // Retrofit + OkHttp
+    // ── Retrofit 3.0.0 + OkHttp 4.12.0 ──────────────────────────────────────
+    // Retrofit 3.x requires OkHttp 4.12+ (written in Kotlin); binary-compatible
+    // with 2.x so no interface changes needed in existing repository code.
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(platform(libs.okhttp.bom))
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
 
-    implementation(platform("io.github.jan-tennert.supabase:bom:3.1.4"))
+    // ── Supabase 3.3.0 + Ktor 3.4.0 ─────────────────────────────────────────
+    // supabase-kt 3.3.0 ships with Ktor 3.4.0 as its recommended engine version
+    implementation(platform("io.github.jan-tennert.supabase:bom:3.3.0"))
     implementation("io.github.jan-tennert.supabase:auth-kt")
-    implementation("io.ktor:ktor-client-android:3.1.2")
+    implementation("io.ktor:ktor-client-android:3.4.0")
 
-    // DataStore
+    // ── DataStore ────────────────────────────────────────────────────────────
     implementation(libs.datastore.preferences)
 
-    // Coroutines
+    // ── Coroutines 1.10.2 ────────────────────────────────────────────────────
     implementation(libs.coroutines.android)
 
-    // Testing
+    // ── Testing ───────────────────────────────────────────────────────────────
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.coroutines.test)

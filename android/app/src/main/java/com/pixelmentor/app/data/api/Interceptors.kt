@@ -6,6 +6,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 
 /**
  * OkHttp interceptor chain:
@@ -89,7 +90,7 @@ class TokenRefreshInterceptor(
                 .protocol(okhttp3.Protocol.HTTP_1_1)
                 .code(401)
                 .message("Session expired")
-                .body(okhttp3.ResponseBody.create(null, ""))
+                .body("".toResponseBody())
                 .build()
         }
     }

@@ -8,7 +8,13 @@ import json
 import logging
 from typing import TypedDict, Optional, List
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph
+# END moved to langgraph.constants in LangGraph 1.x
+# Falling back gracefully for any residual 0.x installs
+try:
+    from langgraph.constants import END
+except ImportError:
+    from langgraph.graph import END
 from openai import AsyncOpenAI
 
 from app.config import settings
