@@ -43,6 +43,7 @@ import com.pixelmentor.app.domain.model.AuthState
 fun LoginScreen(
     onAuthenticated: () -> Unit,
     onForgotPassword: () -> Unit,
+    sessionExpiredMessage: String? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val authState by viewModel.authState.collectAsStateWithLifecycle()
@@ -124,6 +125,36 @@ fun LoginScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     AuthTabToggle(isSignUp = isSignUp, onToggle = { isSignUp = it })
+
+                    // ── Session expired banner ────────────────────────────────
+                    // Shown when force-logout fires (e.g. 401 after token refresh
+                    // fails, or manual sign-out). Uses a distinct amber/warning
+                    // colour so it doesn't look like a login error.
+                    AnimatedVisibility(visible = sessionExpiredMessage != null) {
+                        if (sessionExpiredMessage != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.tertiaryContainer)
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = sessionExpiredMessage,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
+                    }
 
                     // Error banner
                     AnimatedVisibility(visible = uiState is LoginUiState.Error) {

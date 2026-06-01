@@ -29,6 +29,13 @@ import com.pixelmentor.app.data.auth.AuthRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import javax.inject.Inject
 
 // ── Navigation routes ─────────────────────────────────────────────────────────
@@ -91,7 +98,10 @@ class MainActivity : ComponentActivity() {
                     }
                     else -> Routes.LOGIN
                 }
-                PixelMentorNavHost(startRoute = startRoute)
+                PixelMentorNavHost(
+                    startRoute = startRoute,
+                    authRepository = authRepository,
+                )
             }
         }
     }
@@ -116,8 +126,27 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun PixelMentorNavHost(startRoute: String = Routes.LOGIN) {
+private fun PixelMentorNavHost(
+    startRoute: String = Routes.LOGIN,
+    authRepository: AuthRepository,
+) {
     val navController = rememberNavController()
+
+    // ── Global force-logout observer ──────────────────────────────────────────
+    // When TokenRefreshInterceptor exhausts retries on a 401, it calls
+    // authRepository.notifyForceLogout(). We catch that here — the single place
+    // in the app that owns the nav controller — and redirect to Login with a
+    // user-friendly message regardless of which screen the user is on.
+    var sessionExpiredMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        authRepository.forceLogout.collect { reason ->
+            sessionExpiredMessage = reason
+            navController.navigate(Routes.LOGIN) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = { PixelMentorBottomBar(navController = navController) }
@@ -130,13 +159,15 @@ private fun PixelMentorNavHost(startRoute: String = Routes.LOGIN) {
             composable(Routes.LOGIN) {
                 LoginScreen(
                     onAuthenticated = {
+                        sessionExpiredMessage = null
                         navController.navigate(Routes.LESSONS) {
                             popUpTo(Routes.LOGIN) { inclusive = true }
                         }
                     },
                     onForgotPassword = {
                         navController.navigate(Routes.FORGOT_PASSWORD)
-                    }
+                    },
+                    sessionExpiredMessage = sessionExpiredMessage,
                 )
             }
 
