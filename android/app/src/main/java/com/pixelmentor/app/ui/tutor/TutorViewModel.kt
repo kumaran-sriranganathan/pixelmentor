@@ -8,6 +8,8 @@ import com.pixelmentor.app.domain.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import retrofit2.HttpException
 import java.util.UUID
 import javax.inject.Inject
 
@@ -52,6 +54,19 @@ class TutorViewModel @Inject constructor(
     private val _activeTab = MutableStateFlow(TutorTab.CHAT)
     val activeTab: StateFlow<TutorTab> = _activeTab.asStateFlow()
 
+    // ── Quiz upgrade dialog ───────────────────────────────────────────────────
+    // Shown when the user hits their monthly quiz limit (HTTP 429).
+
+    private val _showQuizUpgradeDialog = MutableStateFlow(false)
+    val showQuizUpgradeDialog: StateFlow<Boolean> = _showQuizUpgradeDialog.asStateFlow()
+
+    private val _quizLimitMessage = MutableStateFlow("")
+    val quizLimitMessage: StateFlow<String> = _quizLimitMessage.asStateFlow()
+
+    fun dismissQuizUpgradeDialog() {
+        _showQuizUpgradeDialog.value = false
+    }
+
     init {
         // Warm the cache for the default topic as soon as the ViewModel is created
         warmQuizCache(photographyTopics.first())
@@ -61,9 +76,9 @@ class TutorViewModel @Inject constructor(
         viewModelScope.launch {
             _quizCacheWarming.value = true
             try {
-                repository.generateQuiz(topic = topic)
+                val token = authManager.getCurrentUser()?.accessToken ?: return@launch
+                repository.generateQuiz(topic = topic, authToken = token)
             } catch (_: Exception) {
-                // Warming failure is silent — user just waits normally if cache is cold
             } finally {
                 _quizCacheWarming.value = false
             }
@@ -146,14 +161,41 @@ class TutorViewModel @Inject constructor(
         _quizState.value = QuizUiState.Loading
 
         viewModelScope.launch {
-            repository.generateQuiz(topic = topic).fold(
-                onSuccess = { quiz ->
-                    _quizState.value = QuizUiState.Active(quiz = quiz)
-                },
-                onFailure = {
-                    _quizState.value = QuizUiState.Error(it.message ?: "Failed to generate quiz")
-                }
-            )
+            try {
+                val token = authManager.getCurrentUser()?.accessToken
+                    ?: throw Exception("Not authenticated")
+                repository.generateQuiz(topic = topic, authToken = token).fold(
+                    onSuccess = { _quizState.value = QuizUiState.Active(quiz = it) },
+                    onFailure = { error ->
+                        // ── Handle 429 quiz limit exceeded ────────────────────
+                        // Parse the structured error body from the backend and
+                        // show an upgrade dialog instead of a generic error.
+                        val httpError = error as? HttpException
+                        if (httpError?.code() == 429) {
+                            try {
+                                val body = httpError.response()?.errorBody()?.string()
+                                val detail = JSONObject(body ?: "{}").optJSONObject("detail")
+                                val msg = detail?.optString("message")
+                                    ?: "You've reached your monthly quiz limit."
+                                _quizLimitMessage.value = msg
+                                _showQuizUpgradeDialog.value = true
+                                _quizState.value = QuizUiState.Idle
+                            } catch (_: Exception) {
+                                // Fallback if body parsing fails
+                                _quizLimitMessage.value = "You've reached your monthly quiz limit."
+                                _showQuizUpgradeDialog.value = true
+                                _quizState.value = QuizUiState.Idle
+                            }
+                        } else {
+                            _quizState.value = QuizUiState.Error(
+                                error.message ?: "Failed to generate quiz"
+                            )
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                _quizState.value = QuizUiState.Error(e.message ?: "Not authenticated")
+            }
         }
     }
 

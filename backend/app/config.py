@@ -20,7 +20,24 @@ class Settings(BaseSettings):
     # ── Rate limiting ─────────────────────────────────────────────────────────
     rate_limit_per_minute: int = 60
     rate_limit_ai_per_minute: int = 20
-    # Per-user photo analysis limit — prevents runaway OpenAI costs
+
+    # ── Plan-based limits ─────────────────────────────────────────────────────
+    # Photo analyses per month
+    free_photo_analyses_per_month: int = 10
+    pro_photo_analyses_per_month: int = 30
+    premium_photo_analyses_per_month: int = 999999  # effectively unlimited
+
+    # Tutor chat messages per day
+    free_chat_messages_per_day: int = 10
+    pro_chat_messages_per_day: int = 999999         # unlimited
+    premium_chat_messages_per_day: int = 999999     # unlimited
+
+    # Quiz attempts per month
+    free_quiz_attempts_per_month: int = 5
+    pro_quiz_attempts_per_month: int = 999999       # unlimited
+    premium_quiz_attempts_per_month: int = 999999   # unlimited
+
+    # Legacy per-day limit (kept for backward compat, superseded by plan limits)
     max_photos_per_user_per_day: int = 20
 
     # ── General ───────────────────────────────────────────────────────────────
@@ -76,6 +93,30 @@ class Settings(BaseSettings):
                 "ALLOWED_HOSTS='[\"pixelmentor-production.up.railway.app\"]'"
             )
         return self.allowed_hosts
+
+    def get_photo_limit(self, plan: str) -> int:
+        """Returns monthly photo analysis limit for a given plan."""
+        return {
+            "free": self.free_photo_analyses_per_month,
+            "pro": self.pro_photo_analyses_per_month,
+            "premium": self.premium_photo_analyses_per_month,
+        }.get(plan, self.free_photo_analyses_per_month)
+
+    def get_chat_limit(self, plan: str) -> int:
+        """Returns daily chat message limit for a given plan."""
+        return {
+            "free": self.free_chat_messages_per_day,
+            "pro": self.pro_chat_messages_per_day,
+            "premium": self.premium_chat_messages_per_day,
+        }.get(plan, self.free_chat_messages_per_day)
+
+    def get_quiz_limit(self, plan: str) -> int:
+        """Returns monthly quiz attempt limit for a given plan."""
+        return {
+            "free": self.free_quiz_attempts_per_month,
+            "pro": self.pro_quiz_attempts_per_month,
+            "premium": self.premium_quiz_attempts_per_month,
+        }.get(plan, self.free_quiz_attempts_per_month)
 
 
 settings = Settings()  # type: ignore[call-arg]  # values come from env

@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
 from pydantic import BaseModel
@@ -36,7 +36,7 @@ def get_openai_client() -> AsyncOpenAI:
     return _openai_client
 
 # ── Cache config ──────────────────────────────────────────────────────────────
-QUIZ_POOL_SIZE   = 40   # questions generated and stored per topic+difficulty
+QUIZ_POOL_SIZE   = 10   # questions generated and stored per topic+difficulty
 QUIZ_SERVE_SIZE  = 5    # questions sampled from pool per request
 CACHE_TTL_DAYS   = 7    # regenerate pool after this many days
 CACHE_WARM_DAYS  = 5    # trigger background refresh after this many days
@@ -109,7 +109,11 @@ async def _generate_question_pool(
     Generate a pool of questions using gpt-4o-mini.
     Single API call regardless of pool size — fast and cheap.
     """
-    client = get_openai_client()
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key,
+        timeout=60.0,   # ← 40 questions needs more time than default 25s
+        max_retries=0,  # ← don't retry, just fail fast if it times out
+    )
     logger.info(f"Generating {pool_size}-question pool for topic='{topic}' difficulty='{difficulty}'")
 
     response = await client.chat.completions.create(
@@ -145,6 +149,7 @@ Return ONLY the JSON object, no other text."""
         response_format={"type": "json_object"},
         max_tokens=6000,   # 40 questions × ~150 tokens each
         temperature=0.85,  # slightly higher for more variety in the pool
+        timeout=55.0,
     )
 
     data = json.loads(response.choices[0].message.content)
@@ -154,10 +159,6 @@ Return ONLY the JSON object, no other text."""
 
 
 async def _get_cached_pool(topic: str, difficulty: str) -> dict | None:
-    """
-    Returns the cache row if it exists and is not expired (>TTL days old).
-    Returns None on miss or expired.
-    """
     try:
         from app.utils.supabase_client import get_supabase_admin
         supabase = get_supabase_admin()
@@ -165,11 +166,12 @@ async def _get_cached_pool(topic: str, difficulty: str) -> dict | None:
             .select("questions, refreshed_at, hit_count") \
             .eq("topic", topic) \
             .eq("difficulty", difficulty) \
-            .single() \
+            .maybe_single() \
             .execute()
 
         if not result.data:
             return None
+        # ... rest unchanged
 
         refreshed_at = datetime.fromisoformat(
             result.data["refreshed_at"].replace("Z", "+00:00")
@@ -257,12 +259,19 @@ async def tutor_chat(
 
     skill_profile = await service.get_skill_profile(user_id)
 
+    # ── Fetch history BEFORE saving the new user message ─────────────────────
+    # If we save first then fetch, the current message appears twice in the
+    # context sent to GPT-4o (once in history, once appended below).
+    history = await service.get_chat_history(user_id, limit=10, session_id=request.session_id)
+
+    # Save user message AFTER fetching history
     await service.append_chat_message(user_id, {
         "role": "user",
         "content": request.message,
     }, session_id=request.session_id)
 
-    history = await service.get_chat_history(user_id, limit=10, session_id=request.session_id)
+    # Manually append current message to history for this request
+    history.append({"role": "user", "content": request.message})
 
     async def stream_and_save():
         full_response = []
@@ -278,10 +287,13 @@ async def tutor_chat(
 
         if full_response:
             try:
+                # ── Pass session_id when saving assistant reply ────────────────
+                # Without this, assistant messages get session_id=NULL and are
+                # excluded from get_chat_history, breaking multi-turn context.
                 await service.append_chat_message(user_id, {
                     "role": "assistant",
                     "content": "".join(full_response),
-                })
+                }, session_id=request.session_id)
             except Exception as e:
                 logger.error(f"Failed to save assistant message: {e}")
 
@@ -329,6 +341,24 @@ async def generate_quiz(
 
     num_questions = min(max(request.num_questions, 1), QUIZ_POOL_SIZE)
 
+    # ── Plan-based monthly quiz limit ─────────────────────────────────────────
+    plan = await service.get_user_plan(user_id)
+    quiz_limit = settings.get_quiz_limit(plan)
+    quiz_attempts = await service.get_quiz_attempts_this_month(user_id)
+
+    if quiz_attempts >= quiz_limit:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "quiz_limit_reached",
+                "message": f"You've used all {quiz_limit} quiz attempts included in your {plan.capitalize()} plan this month.",
+                "limit": quiz_limit,
+                "used": quiz_attempts,
+                "plan": plan,
+                "upgrade_required": plan == "free",
+            }
+        )
+
     # Get skill level for prompt context
     skill_profile = await service.get_skill_profile(user_id)
     skill_level = skill_profile.get("level", "intermediate")
@@ -354,6 +384,9 @@ async def generate_quiz(
         # Increment hit counter (fire and forget)
         background_tasks.add_task(_increment_hits, topic, difficulty)
 
+        # Record quiz attempt for rate limiting
+        background_tasks.add_task(service.record_quiz_attempt, user_id, topic)
+
         return {
             "quiz_id": str(uuid.uuid4()),
             "topic": request.topic,
@@ -367,6 +400,9 @@ async def generate_quiz(
 
     # Store in background so response isn't delayed by the DB write
     background_tasks.add_task(_store_pool, topic, difficulty, questions)
+
+    # Record quiz attempt for rate limiting
+    background_tasks.add_task(service.record_quiz_attempt, user_id, topic)
 
     return {
         "quiz_id": str(uuid.uuid4()),

@@ -21,13 +21,18 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Intent
+import android.net.Uri
 import com.pixelmentor.app.domain.model.AuthState
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +43,7 @@ import com.pixelmentor.app.domain.model.AuthState
 fun LoginScreen(
     onAuthenticated: () -> Unit,
     onForgotPassword: () -> Unit,
+    sessionExpiredMessage: String? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val authState by viewModel.authState.collectAsStateWithLifecycle()
@@ -47,21 +53,46 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var isSignUp by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var ageConfirmed by remember { mutableStateOf(false) }
 
     val passwordFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val submit = {
         if (email.isNotBlank() && password.isNotBlank() &&
-            uiState !is LoginUiState.SigningIn) {
+            uiState !is LoginUiState.SigningIn &&
+            (!isSignUp || ageConfirmed)) {
             keyboardController?.hide()
             if (isSignUp) viewModel.signUp(email, password)
             else viewModel.signInWithEmail(email, password)
         }
     }
 
+    // Only navigate away once auth state has settled to Authenticated.
+    // Guarding against Loading prevents a race where a fresh LoginViewModel
+    // briefly sees the old session before signOut() has fully cleared it.
     LaunchedEffect(authState) {
         if (authState is AuthState.Authenticated) onAuthenticated()
+    }
+
+    // While auth state is still resolving, show a full-screen loader so the
+    // login form never flashes before we know whether the user is signed in.
+    if (authState is AuthState.Loading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    // Show email verification screen after sign up
+    val currentUiState = uiState
+    if (currentUiState is LoginUiState.AwaitingEmailVerification) {
+        VerifyEmailScreen(
+            email = currentUiState.email,
+            onBackToLogin = { viewModel.resetToIdle() },
+            onResendEmail = { viewModel.resendVerificationEmail(currentUiState.email) }
+        )
+        return
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -94,6 +125,36 @@ fun LoginScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     AuthTabToggle(isSignUp = isSignUp, onToggle = { isSignUp = it })
+
+                    // ── Session expired banner ────────────────────────────────
+                    // Shown when force-logout fires (e.g. 401 after token refresh
+                    // fails, or manual sign-out). Uses a distinct amber/warning
+                    // colour so it doesn't look like a login error.
+                    AnimatedVisibility(visible = sessionExpiredMessage != null && sessionExpiredMessage.isNotEmpty()) {
+                        if (!sessionExpiredMessage.isNullOrEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.tertiaryContainer)
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = sessionExpiredMessage,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
+                    }
 
                     // Error banner
                     AnimatedVisibility(visible = uiState is LoginUiState.Error) {
@@ -203,11 +264,39 @@ fun LoginScreen(
                                 }
                             }
 
+                            // Age confirmation checkbox — only shown on Sign Up tab
+                            if (isSignUp) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        .clickable { ageConfirmed = !ageConfirmed }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = ageConfirmed,
+                                        onCheckedChange = { ageConfirmed = it },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                    Text(
+                                        text = "I confirm I am 13 years of age or older",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
                             // Primary CTA button
                             Button(
                                 onClick = { submit() },
                                 enabled = uiState !is LoginUiState.SigningIn &&
-                                        email.isNotBlank() && password.isNotBlank(),
+                                        email.isNotBlank() && password.isNotBlank() &&
+                                        (!isSignUp || ageConfirmed),
                                 modifier = Modifier.fillMaxWidth().height(54.dp),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(
@@ -229,6 +318,9 @@ fun LoginScreen(
                                     )
                                 }
                             }
+
+                            // Legal links — ToS and Privacy Policy
+                            LegalLinksText(isSignUp = isSignUp)
 
                             // Divider
                             Row(
@@ -502,6 +594,7 @@ fun ForgotPasswordScreen(
 @Composable
 fun ResetPasswordScreen(
     onPasswordReset: () -> Unit,
+    deepLinkUrl: String? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.resetPasswordState.collectAsStateWithLifecycle()
@@ -515,8 +608,20 @@ fun ResetPasswordScreen(
     val passwordsMatch = newPassword == confirmPassword
     val isValid = newPassword.length >= 6 && passwordsMatch
 
+    // Exchange the recovery tokens from the deep link for a valid session
+    // BEFORE the user taps Update Password — without this the JWT has no
+    // sub claim and the update fails with bad_jwt.
+    LaunchedEffect(deepLinkUrl) {
+        deepLinkUrl?.let { viewModel.handlePasswordResetDeepLink(it) }
+    }
+
     LaunchedEffect(state) {
-        if (state is ResetPasswordUiState.Success) onPasswordReset()
+        if (state is ResetPasswordUiState.Success) {
+            // Brief pause so the user sees the success state before being
+            // redirected to login to sign in with their new password
+            kotlinx.coroutines.delay(1500)
+            onPasswordReset()
+        }
     }
 
     Scaffold(
@@ -676,7 +781,8 @@ fun ResetPasswordScreen(
                     keyboardController?.hide()
                     viewModel.updatePassword(newPassword)
                 },
-                enabled = isValid && state !is ResetPasswordUiState.Saving,
+                enabled = isValid && state !is ResetPasswordUiState.Saving
+                        && state !is ResetPasswordUiState.Success,
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 shape = RoundedCornerShape(14.dp)
             ) {
@@ -690,12 +796,249 @@ fun ResetPasswordScreen(
                     Text("Update Password", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
+
+            // Success banner — shown briefly before redirecting to login
+            AnimatedVisibility(visible = state is ResetPasswordUiState.Success) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column {
+                        Text(
+                            "Password updated!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "Please sign in with your new password.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared composables
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Verify email screen (shown after sign up)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+fun VerifyEmailScreen(
+    email: String,
+    onBackToLogin: () -> Unit,
+    onResendEmail: () -> Unit,
+) {
+    var resendCooldown by remember { mutableStateOf(0) }
+    var resendSent by remember { mutableStateOf(false) }
+
+    LaunchedEffect(resendCooldown) {
+        if (resendCooldown > 0) {
+            kotlinx.coroutines.delay(1000)
+            resendCooldown--
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AnimatedBackground()
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Icon
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.tertiary
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Outlined.MarkEmailUnread,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = Color.White
+                )
+            }
+
+            Spacer(Modifier.height(32.dp))
+
+            Text(
+                "Check your inbox",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "We've sent a verification link to",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Text(
+                email,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                "Click the link in the email to verify your account and get started.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(40.dp))
+
+            // Resend button with cooldown
+            if (resendSent) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        "Verification email sent!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            } else {
+                OutlinedButton(
+                    onClick = {
+                        if (resendCooldown == 0) {
+                            onResendEmail()
+                            resendSent = true
+                            resendCooldown = 30
+                            // Reset "sent" message after cooldown
+                        }
+                    },
+                    enabled = resendCooldown == 0,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.Email,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (resendCooldown > 0) "Resend in ${resendCooldown}s"
+                        else "Resend verification email",
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            TextButton(onClick = onBackToLogin) {
+                Icon(
+                    Icons.Outlined.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Back to Sign In")
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legal links — ToS and Privacy Policy
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun LegalLinksText(isSignUp: Boolean) {
+    val context = LocalContext.current
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    val annotatedText = buildAnnotatedString {
+        withStyle(SpanStyle(color = mutedColor, fontSize = 11.sp)) {
+            if (isSignUp) append("By creating an account you agree to our ")
+            else append("By signing in you agree to our ")
+        }
+        pushStringAnnotation(tag = "TOS", annotation = "https://pixelmentor.app/terms.html")
+        withStyle(SpanStyle(color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)) {
+            append("Terms of Service")
+        }
+        pop()
+        withStyle(SpanStyle(color = mutedColor, fontSize = 11.sp)) {
+            append(" and ")
+        }
+        pushStringAnnotation(tag = "PRIVACY", annotation = "https://pixelmentor.app/privacy.html")
+        withStyle(SpanStyle(color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)) {
+            append("Privacy Policy")
+        }
+        pop()
+    }
+
+    androidx.compose.foundation.text.ClickableText(
+        text = annotatedText,
+        modifier = Modifier.fillMaxWidth(),
+        style = androidx.compose.ui.text.TextStyle(textAlign = TextAlign.Center),
+        onClick = { offset ->
+            annotatedText.getStringAnnotations(tag = "TOS", start = offset, end = offset)
+                .firstOrNull()?.let {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.item)))
+                }
+            annotatedText.getStringAnnotations(tag = "PRIVACY", start = offset, end = offset)
+                .firstOrNull()?.let {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.item)))
+                }
+        }
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Animated background
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable

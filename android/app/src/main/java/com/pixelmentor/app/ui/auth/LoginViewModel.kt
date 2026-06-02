@@ -20,6 +20,7 @@ sealed class LoginUiState {
     data object Idle : LoginUiState()
     data object SigningIn : LoginUiState()
     data class Error(val message: String) : LoginUiState()
+    data class AwaitingEmailVerification(val email: String) : LoginUiState()
 }
 
 sealed class ForgotPasswordUiState {
@@ -75,12 +76,27 @@ class LoginViewModel @Inject constructor(
             _uiState.update { LoginUiState.SigningIn }
             try {
                 authRepository.signUp(email, password)
-                _uiState.update { LoginUiState.Idle }
+                // Don't navigate to home — user must verify email first
+                _uiState.update { LoginUiState.AwaitingEmailVerification(email) }
             } catch (e: Exception) {
                 Log.e("LoginViewModel", "Sign up failed", e)
                 _uiState.update { LoginUiState.Error(friendlyAuthError(e, isSignUp = true)) }
             }
         }
+    }
+
+    fun resendVerificationEmail(email: String) {
+        viewModelScope.launch {
+            try {
+                authRepository.sendPasswordResetEmail(email) // resend via reset flow
+            } catch (_: Exception) {
+                // silent — user can try again
+            }
+        }
+    }
+
+    fun resetToIdle() {
+        _uiState.update { LoginUiState.Idle }
     }
 
     // ── Forgot password ───────────────────────────────────────────────────────
@@ -112,11 +128,32 @@ class LoginViewModel @Inject constructor(
 
     // ── Reset password (after deep-link) ──────────────────────────────────────
 
+    /**
+     * Exchanges the recovery tokens from the deep link URL for a valid session.
+     * Called from ResetPasswordScreen via LaunchedEffect as soon as the screen
+     * renders — must complete before the user taps Update Password.
+     */
+    fun handlePasswordResetDeepLink(deepLinkUrl: String) {
+        viewModelScope.launch {
+            try {
+                authRepository.handlePasswordResetDeepLink(deepLinkUrl)
+            } catch (e: Exception) {
+                Log.e("LoginViewModel", "Failed to handle reset deep link", e)
+            }
+        }
+    }
+
     fun updatePassword(newPassword: String) {
         viewModelScope.launch {
             _resetPasswordState.update { ResetPasswordUiState.Saving }
             try {
                 authRepository.updatePassword(newPassword)
+                // ── Sign out after reset ──────────────────────────────────────
+                // Force the user to log in with their new password rather than
+                // auto-logging in via the recovery session. This is the safer
+                // pattern — it confirms the user knows their new credentials
+                // and prevents session confusion on shared or compromised devices.
+                authRepository.signOut()
                 _resetPasswordState.update { ResetPasswordUiState.Success }
             } catch (e: Exception) {
                 Log.e("LoginViewModel", "Update password failed", e)

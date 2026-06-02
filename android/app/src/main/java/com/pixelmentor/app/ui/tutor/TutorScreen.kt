@@ -30,6 +30,7 @@ import com.pixelmentor.app.domain.model.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TutorScreen(
+    onUpgrade: () -> Unit = {},
     viewModel: TutorViewModel = hiltViewModel()
 ) {
     val activeTab by viewModel.activeTab.collectAsState()
@@ -39,6 +40,8 @@ fun TutorScreen(
     val quizState by viewModel.quizState.collectAsState()
     val selectedTopic by viewModel.selectedTopic.collectAsState()
     val quizCacheWarming by viewModel.quizCacheWarming.collectAsState()
+    val showQuizUpgradeDialog by viewModel.showQuizUpgradeDialog.collectAsState()
+    val quizLimitMessage by viewModel.quizLimitMessage.collectAsState()
 
     Scaffold(
         topBar = {
@@ -88,6 +91,45 @@ fun TutorScreen(
                     onResetQuiz = viewModel::resetQuiz
                 )
             }
+        }
+
+        // ── Quiz limit upgrade dialog ──────────────────────────────────────────
+        // Shown when the user hits their monthly quiz limit (HTTP 429).
+        // Offers a direct path to upgrade rather than a generic error.
+        if (showQuizUpgradeDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissQuizUpgradeDialog() },
+                icon = {
+                    Icon(
+                        Icons.Outlined.Lock,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                title = {
+                    Text("Quiz Limit Reached", fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Text(
+                        "$quizLimitMessage\n\nUpgrade to Pro for 30 quizzes/month, " +
+                        "or Premium for unlimited access.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        viewModel.dismissQuizUpgradeDialog()
+                        onUpgrade()
+                    }) {
+                        Text("Upgrade Plan")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissQuizUpgradeDialog() }) {
+                        Text("Maybe Later")
+                    }
+                }
+            )
         }
     }
 }

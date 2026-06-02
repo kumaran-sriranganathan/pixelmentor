@@ -1,74 +1,110 @@
 [versions]
-agp = "8.7.3"
-kotlin = "2.0.21"
-ksp = "2.0.21-1.0.28"
-hilt = "2.52"
-compose-bom = "2024.10.01"
-navigation-compose = "2.8.3"
-lifecycle = "2.8.7"
-retrofit = "2.11.0"
-okhttp = "4.12.0"
+# ── Build toolchain ───────────────────────────────────────────────────────────
+# AGP 8.9.2 — staying on 8.x; AGP 9.0 has breaking DSL/variant API changes
+agp = "8.9.2"
+
+# Kotlin 2.3.21 + KSP 2.3.7
+# supabase-kt 3.3.0 and ktor 3.4.0 were compiled with Kotlin 2.3.0, so the
+# project Kotlin version must be >= 2.3.x. KSP changed its versioning scheme
+# at 2.3.x — it is now independently versioned (2.3.7), not tied to Kotlin's
+# patch version like the old 2.1.x-1.0.28 format was.
+kotlin = "2.3.21"
+ksp   = "2.3.7"
+
+# ── DI ────────────────────────────────────────────────────────────────────────
+# Hilt 2.58 — critical version:
+# - Last version whose Gradle plugin supports AGP 8.x (2.59+ requires AGP 9)
+# - First version that includes kotlin-metadata-jvm support for Kotlin 2.3.x
+#   metadata (2.57.x only supports up to 2.2.0, causing hiltJavaCompileDebug failure)
+hilt = "2.58"
+
+# ── Compose & UI ─────────────────────────────────────────────────────────────
+# BOM 2026.05.01 — May 2026 stable train (Compose 1.11.x core)
+compose-bom       = "2026.05.01"
+activity-compose  = "1.10.1"
+navigation-compose = "2.9.8"
+
+# ── Lifecycle ─────────────────────────────────────────────────────────────────
+lifecycle = "2.9.0"
+
+# ── Networking ────────────────────────────────────────────────────────────────
+# Retrofit 3.0.0 — first major release since 2.x; now requires OkHttp 4.12+
+# Binary-compatible with 2.x so no code changes needed
+retrofit = "3.0.0"
+okhttp   = "4.12.0"
+
+# ── Supabase ──────────────────────────────────────────────────────────────────
+# supabase-kt 3.3.0 — Jan 2026 stable; use matching ktor engine version
+supabase-kt = "3.3.0"
+ktor        = "3.4.0"
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+datastore = "1.1.4"
+
+# ── Coroutines ───────────────────────────────────────────────────────────────
+coroutines = "1.10.2"
+
+# ── Google ────────────────────────────────────────────────────────────────────
+google-services = "4.4.3"
+credentials     = "1.5.0"
+googleid        = "1.1.1"
+
+# ── Legacy (keep for now, not actively used) ─────────────────────────────────
 msal = "5.3.0"
-datastore = "1.1.1"
-coroutines = "1.9.0"
-activity-compose = "1.9.3"
-google-services = "4.4.2"
-credentials = "1.3.0"
-googleid = "1.1.1"
 
 [libraries]
-# Compose BOM
-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
-compose-ui = { group = "androidx.compose.ui", name = "ui" }
-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
-compose-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+# ── Compose BOM ───────────────────────────────────────────────────────────────
+compose-bom              = { group = "androidx.compose",          name = "compose-bom",             version.ref = "compose-bom" }
+compose-ui               = { group = "androidx.compose.ui",       name = "ui" }
+compose-ui-tooling       = { group = "androidx.compose.ui",       name = "ui-tooling" }
+compose-ui-tooling-preview = { group = "androidx.compose.ui",    name = "ui-tooling-preview" }
+compose-material3        = { group = "androidx.compose.material3", name = "material3" }
+compose-icons-extended   = { group = "androidx.compose.material", name = "material-icons-extended" }
 
-# Activity + Navigation
-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
+# ── Activity + Navigation ────────────────────────────────────────────────────
+activity-compose   = { group = "androidx.activity",  name = "activity-compose",   version.ref = "activity-compose" }
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation-compose" }
 
-# Lifecycle
+# ── Lifecycle ────────────────────────────────────────────────────────────────
 lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-runtime-compose   = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose",   version.ref = "lifecycle" }
 
-# Hilt
-hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
-hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version = "1.2.0" }
+# ── Hilt ─────────────────────────────────────────────────────────────────────
+hilt-android           = { group = "com.google.dagger", name = "hilt-android",          version.ref = "hilt" }
+hilt-compiler          = { group = "com.google.dagger", name = "hilt-android-compiler",  version.ref = "hilt" }
+hilt-navigation-compose = { group = "androidx.hilt",   name = "hilt-navigation-compose", version = "1.3.0" }
 
-# Retrofit + OkHttp
-retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
-retrofit-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
-okhttp-bom = { group = "com.squareup.okhttp3", name = "okhttp-bom", version.ref = "okhttp" }
-okhttp = { group = "com.squareup.okhttp3", name = "okhttp" }
-okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor" }
+# ── Retrofit + OkHttp ────────────────────────────────────────────────────────
+retrofit       = { group = "com.squareup.retrofit2", name = "retrofit",          version.ref = "retrofit" }
+retrofit-gson  = { group = "com.squareup.retrofit2", name = "converter-gson",    version.ref = "retrofit" }
+okhttp-bom     = { group = "com.squareup.okhttp3",   name = "okhttp-bom",        version.ref = "okhttp" }
+okhttp         = { group = "com.squareup.okhttp3",   name = "okhttp" }
+okhttp-logging = { group = "com.squareup.okhttp3",   name = "logging-interceptor" }
 
-# MSAL
+# ── MSAL (legacy, keep until Google Sign-In fully replaces it) ───────────────
 msal = { group = "com.microsoft.identity.client", name = "msal", version.ref = "msal" }
 
-# DataStore
+# ── DataStore ────────────────────────────────────────────────────────────────
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 
-# Google Sign-In (Credential Manager)
-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
+# ── Google Sign-In (Credential Manager) ──────────────────────────────────────
+credentials              = { group = "androidx.credentials", name = "credentials",                  version.ref = "credentials" }
 credentials-play-services = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
-googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
+googleid                 = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 
-# Coroutines
+# ── Coroutines ───────────────────────────────────────────────────────────────
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
-# Testing
-junit = { group = "junit", name = "junit", version = "4.13.2" }
-mockk = { group = "io.mockk", name = "mockk", version = "1.13.12" }
-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
-turbine = { group = "app.cash.turbine", name = "turbine", version = "1.2.0" }
+# ── Testing ───────────────────────────────────────────────────────────────────
+junit          = { group = "junit",                    name = "junit",                       version = "4.13.2" }
+mockk          = { group = "io.mockk",                 name = "mockk",                       version = "1.14.0" }
+coroutines-test = { group = "org.jetbrains.kotlinx",  name = "kotlinx-coroutines-test",     version.ref = "coroutines" }
+turbine        = { group = "app.cash.turbine",         name = "turbine",                     version = "1.2.0" }
 
 [plugins]
-android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
-google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
+android-application = { id = "com.android.application",        version.ref = "agp" }
+kotlin-android      = { id = "org.jetbrains.kotlin.android",   version.ref = "kotlin" }
+kotlin-compose      = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+hilt                = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+ksp                 = { id = "com.google.devtools.ksp",         version.ref = "ksp" }
+google-services     = { id = "com.google.gms.google-services",  version.ref = "google-services" }

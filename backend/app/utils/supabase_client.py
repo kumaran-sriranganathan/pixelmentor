@@ -4,11 +4,6 @@
 # Security design:
 #   get_supabase_client()   → uses ANON key  — respects RLS policies
 #   get_supabase_admin()    → uses SERVICE key — bypasses RLS, use sparingly
-#
-# Most read/write operations should use the anon key client.
-# The service key client is only used for privileged RPCs (mark_lesson_complete,
-# increment_photos_analyzed) that use SECURITY DEFINER functions in Postgres,
-# where the function itself enforces the authorization logic.
 ###############################################################################
 
 from supabase import create_client, Client
@@ -16,34 +11,102 @@ from app.config import settings
 
 
 def get_supabase_client() -> Client:
-    """
-    Standard client — uses the anon key.
-    Respects Row Level Security (RLS) policies on all tables.
-    Use this for all regular data access.
-    """
     return create_client(settings.supabase_url, settings.supabase_anon_key)
 
 
 def get_supabase_admin() -> Client:
-    """
-    Admin client — uses the service role key.
-    BYPASSES Row Level Security. Only use for:
-      - SECURITY DEFINER RPCs that handle their own auth checks
-      - Administrative tasks that genuinely need cross-user access
-    Never use this for user-facing data reads.
-    """
     return create_client(settings.supabase_url, settings.supabase_service_key)
 
 
 class SupabaseService:
     def __init__(self):
-        # Most operations use the anon client (RLS enforced)
         self.db = get_supabase_client()
-        # Admin client available for privileged RPCs only
         self._admin = get_supabase_admin()
 
+    # ── Plan helpers ──────────────────────────────────────────────────────────
+
+    async def get_user_plan(self, user_id: str) -> str:
+        """Returns the user's current plan: 'free', 'pro', or 'premium'."""
+        try:
+            response = (
+                self._admin.table("user_profiles")
+                .select("plan")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if response.data:
+                return response.data[0].get("plan", "free")
+        except Exception:
+            pass
+        return "free"
+
+    async def get_photos_analyzed_this_month(self, user_id: str) -> int:
+        """Count photo analyses submitted by the user in the current calendar month."""
+        try:
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            # First day of current month
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+            response = (
+                self._admin.table("photo_analyses")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .gte("created_at", month_start)
+                .execute()
+            )
+            return response.count or 0
+        except Exception:
+            return 0
+
+    async def get_chat_messages_today(self, user_id: str) -> int:
+        """Count user chat messages sent today."""
+        try:
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            response = (
+                self._admin.table("chat_history")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .eq("role", "user")
+                .gte("created_at", day_start)
+                .execute()
+            )
+            return response.count or 0
+        except Exception:
+            return 0
+
+    async def get_quiz_attempts_this_month(self, user_id: str) -> int:
+        """Count quiz attempts by the user in the current calendar month."""
+        try:
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+            response = (
+                self._admin.table("quiz_attempts")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .gte("created_at", month_start)
+                .execute()
+            )
+            return response.count or 0
+        except Exception:
+            return 0
+
+    async def record_quiz_attempt(self, user_id: str, topic: str) -> None:
+        """Record a quiz attempt for rate limiting purposes."""
+        try:
+            self._admin.table("quiz_attempts").insert({
+                "user_id": user_id,
+                "topic": topic,
+            }).execute()
+        except Exception:
+            pass  # non-fatal
+
+    # ── Existing methods ──────────────────────────────────────────────────────
+
     async def save_analysis(self, user_id: str, analysis_id: str, blob_url: str, result) -> str:
-        """Save photo analysis result to Supabase."""
         self._admin.table("photo_analyses").upsert({
             "id": analysis_id,
             "user_id": user_id,
@@ -55,7 +118,6 @@ class SupabaseService:
         return analysis_id
 
     async def get_user_analyses(self, user_id: str, limit: int = 10) -> list:
-        """Get recent analyses for a user."""
         try:
             response = (
                 self._admin.table("photo_analyses")
@@ -70,7 +132,6 @@ class SupabaseService:
             return []
 
     async def get_skill_profile(self, user_id: str) -> dict:
-        """Get user skill profile. Returns defaults if not found."""
         try:
             response = (
                 self._admin.table("skill_profiles")
@@ -86,7 +147,6 @@ class SupabaseService:
         return {"level": "beginner", "strengths": [], "areas_to_improve": []}
 
     async def append_chat_message(self, user_id: str, message: dict, session_id: str | None = None):
-        """Append a message to chat history."""
         self._admin.table("chat_history").insert({
             "user_id": user_id,
             "role": message.get("role"),
@@ -95,7 +155,6 @@ class SupabaseService:
         }).execute()
 
     async def get_chat_history(self, user_id: str, limit: int = 10, session_id: str | None = None) -> list:
-        """Get recent chat history formatted for OpenAI messages."""
         try:
             query = (
                 self._admin.table("chat_history")
@@ -115,10 +174,6 @@ class SupabaseService:
             return []
 
     async def get_user_profile(self, user_id: str, display_name: str = None) -> dict:
-        """Get user profile, creating it on first access.
-        Uses admin client for upsert — RLS blocks anon key from inserting
-        new rows without a user auth token in the request context.
-        """
         try:
             response = (
                 self._admin.table("user_profiles")
@@ -132,7 +187,6 @@ class SupabaseService:
         except Exception:
             pass
 
-        # Create profile on first access using admin client
         profile = {
             "user_id": user_id,
             "display_name": display_name or "PixelMentor User",
@@ -150,7 +204,7 @@ class SupabaseService:
         return profile
 
     async def get_photos_analyzed_today(self, user_id: str) -> int:
-        """Count photo analyses submitted by the user in the last 24 hours."""
+        """Legacy daily counter — kept for backward compat."""
         try:
             from datetime import datetime, timezone, timedelta
             since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()

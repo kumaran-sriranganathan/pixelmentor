@@ -10,10 +10,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 from app.config import settings
 from app.middleware.rate_limiter import RateLimitMiddleware
 from app.routers import analyze, tutor, lessons, users, health
+import sentry_sdk
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -89,6 +91,12 @@ async def global_exception_handler(request: Request, exc: Exception):
         },
     )
 
+# __ Exceptions ________________________________________________________________
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logging.error(f"422 Validation error: {exc.errors()}")
+    logging.error(f"Request body: {await request.body()}")
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(health.router,   tags=["Health"])

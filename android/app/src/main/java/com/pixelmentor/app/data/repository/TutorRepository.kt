@@ -41,6 +41,8 @@ class TutorRepository @Inject constructor(
             .post(body.toRequestBody("application/json".toMediaType()))
             .header("Authorization", "Bearer $authToken")
             .header("Accept", "text/event-stream")
+            .header("Cache-Control", "no-cache")   // ensures a fresh SSE stream each request
+            .header("Connection", "keep-alive")     // prevents stale connection reuse
             .build()
 
         val response = okHttpClient.newCall(request).execute()
@@ -49,7 +51,10 @@ class TutorRepository @Inject constructor(
             throw Exception("Chat failed: ${response.code}")
         }
 
-        response.body?.source()?.let { source ->
+        // .use{} guarantees the response body is closed after the flow completes,
+        // preventing the previous connection's buffer leaking into the next request.
+        response.body?.use { responseBody ->
+            val source = responseBody.source()
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: break
                 when {
@@ -65,6 +70,7 @@ class TutorRepository @Inject constructor(
                             // Non-JSON data line — skip
                         }
                     }
+                    line == "" -> { /* skip empty lines between SSE events */ }
                 }
             }
         }
@@ -76,10 +82,12 @@ class TutorRepository @Inject constructor(
     suspend fun generateQuiz(
         topic: String,
         difficulty: String = "intermediate",
-        numQuestions: Int = 5
+        numQuestions: Int = 5,
+        authToken: String
     ): Result<QuizResponse> = try {
         val response = apiService.generateQuiz(
-            QuizRequest(
+            authorization = "Bearer $authToken",
+            body = QuizRequest(
                 topic = topic,
                 difficulty = difficulty,
                 numQuestions = numQuestions

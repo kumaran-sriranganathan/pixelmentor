@@ -16,11 +16,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import com.pixelmentor.app.BuildConfig
 import com.pixelmentor.app.domain.model.*
 import com.pixelmentor.app.ui.profile.DeleteAccountState
 
@@ -34,14 +39,16 @@ fun ProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val deleteAccountState by viewModel.deleteAccountState.collectAsState()
+    val userEmail by viewModel.userEmail.collectAsState()
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Profile", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { viewModel.signOut(onSignOut) }) {
+                    IconButton(onClick = { showSignOutDialog = true }) {
                         Icon(
                             Icons.Outlined.Logout,
                             contentDescription = "Sign out",
@@ -88,11 +95,49 @@ fun ProfileScreen(
             is ProfileUiState.Success -> {
                 ProfileContent(
                     profile = state.profile,
+                    userEmail = userEmail,
                     onUpgrade = onUpgrade,
                     onDeleteAccount = { showDeleteConfirmDialog = true },
                     modifier = Modifier.padding(padding)
                 )
             }
+        }
+
+        // ── Sign out confirmation dialog ───────────────────────────────────
+        if (showSignOutDialog) {
+            AlertDialog(
+                onDismissRequest = { showSignOutDialog = false },
+                icon = {
+                    Icon(
+                        Icons.Outlined.Logout,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                title = {
+                    Text("Sign Out?", fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Text(
+                        "You'll need to sign in again to access PixelMentor.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showSignOutDialog = false
+                        viewModel.signOut()
+                    }) {
+                        Text("Sign Out")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSignOutDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         // ── Delete confirmation dialog ─────────────────────────────────────
@@ -128,6 +173,7 @@ fun ProfileScreen(
 @Composable
 private fun ProfileContent(
     profile: UserProfile,
+    userEmail: String = "",
     onUpgrade: () -> Unit = {},
     onDeleteAccount: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -143,6 +189,7 @@ private fun ProfileContent(
         SkillLevelCard(skillLevel = profile.skillLevel)
         PlanCard(plan = profile.plan, onUpgrade = onUpgrade)
         ActivitySection(profile = profile)
+        SupportSection(userEmail = userEmail, plan = profile.plan.value)
         DeleteAccountSection(onDeleteAccount = onDeleteAccount)
         Spacer(Modifier.height(8.dp))
     }
@@ -570,6 +617,148 @@ private fun ActivityRow(
                 fontWeight = FontWeight.ExtraBold,
                 color = color
             )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Support section
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SupportSection(
+    userEmail: String,
+    plan: String,
+) {
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier.padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            "Support",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            elevation = CardDefaults.cardElevation(1.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Contact support row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                data = Uri.parse("mailto:support@pixelmentor.app")
+                                putExtra(
+                                    Intent.EXTRA_SUBJECT,
+                                    "PixelMentor Support Request"
+                                )
+                                putExtra(
+                                    Intent.EXTRA_TEXT,
+                                    """
+Hi PixelMentor Support,
+
+Account: $userEmail
+Plan: ${plan.replaceFirstChar { it.uppercase() }}
+Device: ${Build.MANUFACTURER} ${Build.MODEL}
+Android: ${Build.VERSION.RELEASE}
+App version: ${BuildConfig.VERSION_NAME}
+
+Describe your issue below:
+
+
+                                    """.trimIndent()
+                                )
+                            }
+                            context.startActivity(
+                                Intent.createChooser(intent, "Contact Support")
+                            )
+                        }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.Email,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Contact Support",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "support@pixelmentor.app",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.Outlined.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                // App version row (non-clickable, informational)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "App Version",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            BuildConfig.VERSION_NAME,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 }

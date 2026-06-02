@@ -7,7 +7,8 @@ import com.google.gson.annotations.SerializedName
 data class PhotoAnalysisRequest(
     @SerializedName("image_base64") val imageBase64: String,
     @SerializedName("filename") val filename: String = "photo.jpg",
-    @SerializedName("mime_type") val mimeType: String = "image/jpeg"
+    @SerializedName("content_type") val contentType: String = "image/jpeg",
+    @SerializedName("skill_level") val skillLevel: String = "intermediate"
 )
 
 // ── Response ──────────────────────────────────────────────────────────────────
@@ -49,6 +50,15 @@ data class LessonRecommendation(
     @SerializedName("difficulty") val difficulty: String? = null
 )
 
+// ── Exceptions ────────────────────────────────────────────────────────────────
+
+class PhotoLimitException(
+    val used: Int,
+    val limit: Int,
+    val plan: String,
+    val upgradeRequired: Boolean
+) : Exception("Photo limit reached: $used/$limit on $plan plan")
+
 // ── UI State ──────────────────────────────────────────────────────────────────
 
 sealed class AnalysisUiState {
@@ -57,6 +67,12 @@ sealed class AnalysisUiState {
     object Analyzing : AnalysisUiState()       // waiting for API
     data class Success(val result: PhotoAnalysisResponse) : AnalysisUiState()
     data class Error(val message: String) : AnalysisUiState()
+    data class LimitReached(
+        val used: Int,
+        val limit: Int,
+        val plan: String,
+        val upgradeRequired: Boolean
+    ) : AnalysisUiState()
 }
 
 enum class FeedbackCategory(val label: String, val emoji: String) {

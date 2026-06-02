@@ -8,6 +8,7 @@ import com.pixelmentor.app.domain.model.SkillLevel
 import com.pixelmentor.app.domain.model.UserProfile
 import com.pixelmentor.app.domain.model.QuizRequest
 import com.pixelmentor.app.domain.model.QuizResponse
+import retrofit2.http.Header
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -34,12 +35,14 @@ interface PixelMentorApiService {
 
     @POST("api/v1/analyze/photo")
     suspend fun analyzePhoto(
-        @Body request: PhotoAnalysisRequest
+        @Header("Authorization") authorization: String,
+        @Body body: PhotoAnalysisRequest
     ): PhotoAnalysisResponse
 
     @POST("api/v1/tutor/quiz")
     suspend fun generateQuiz(
-        @Body request: QuizRequest
+        @Header("Authorization") authorization: String,
+        @Body body: QuizRequest
     ): QuizResponse
 
     @GET("api/v1/lessons/{id}/content")

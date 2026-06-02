@@ -3,8 +3,10 @@ package com.pixelmentor.app.ui.analyze
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pixelmentor.app.data.auth.SupabaseAuthManager
 import com.pixelmentor.app.data.repository.AnalysisRepository
 import com.pixelmentor.app.domain.model.AnalysisUiState
+import com.pixelmentor.app.domain.model.PhotoLimitException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +16,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class PhotoAnalysisViewModel @Inject constructor(
-    private val repository: AnalysisRepository
+    private val repository: AnalysisRepository,
+    private val authManager: SupabaseAuthManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<AnalysisUiState>(AnalysisUiState.Idle)
@@ -30,18 +33,41 @@ class PhotoAnalysisViewModel @Inject constructor(
 
     fun analyzePhoto() {
         val uri = _selectedImageUri.value ?: return
-
         viewModelScope.launch {
             _uiState.value = AnalysisUiState.Uploading
-
-            // Short delay so "Preparing image…" message is visible before heavy work
             kotlinx.coroutines.delay(400)
             _uiState.value = AnalysisUiState.Analyzing
 
-            repository.analyzePhoto(uri).fold(
-                onSuccess = { _uiState.value = AnalysisUiState.Success(it) },
-                onFailure = { _uiState.value = AnalysisUiState.Error(it.message ?: "Analysis failed") }
-            )
+            try {
+                val token = authManager.getCurrentUser()?.accessToken
+                    ?: throw Exception("Not authenticated")
+                repository.analyzePhoto(uri, token).fold(
+                    onSuccess = { _uiState.value = AnalysisUiState.Success(it) },
+                    onFailure = { error ->
+                        if (error is PhotoLimitException) {
+                            _uiState.value = AnalysisUiState.LimitReached(
+                                used = error.used,
+                                limit = error.limit,
+                                plan = error.plan,
+                                upgradeRequired = error.upgradeRequired
+                            )
+                        } else {
+                            _uiState.value = AnalysisUiState.Error(
+                                error.message ?: "Analysis failed"
+                            )
+                        }
+                    }
+                )
+            } catch (e: PhotoLimitException) {
+                _uiState.value = AnalysisUiState.LimitReached(
+                    used = e.used,
+                    limit = e.limit,
+                    plan = e.plan,
+                    upgradeRequired = e.upgradeRequired
+                )
+            } catch (e: Exception) {
+                _uiState.value = AnalysisUiState.Error(e.message ?: "Not authenticated")
+            }
         }
     }
 
