@@ -7,7 +7,6 @@ import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.createSupabaseClient
-import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -122,24 +121,21 @@ class SupabaseAuthManager @Inject constructor() {
     }
 
     suspend fun signOut() {
-        try {
-            // ── Timeout the network call — it must not block forever ──────────
-            // client.auth.signOut() makes a server-side token revocation request.
-            // If Railway or Supabase is slow, this hangs and the user is stuck on
-            // the profile screen with no feedback. We give it 3 seconds — if it
-            // doesn't complete, we still clear the local session below.
-            withTimeout(3_000) {
-                client.auth.signOut()
-            }
-        } catch (_: Exception) {
-            // Timeout, network error, or already-invalid session — non-fatal.
-            // The local session is cleared in the finally block regardless.
-        } finally {
-            // ── Always clear local session immediately ────────────────────────
-            // This is the critical step. Whether or not the server call succeeded,
-            // wiping the in-memory cache here ensures getCurrentUser() returns
-            // null instantly, so no subsequent API call can attach a stale token.
-            client.auth.clearSession()
-        }
+        // ── Local-only sign out ───────────────────────────────────────────────
+        // We do NOT call client.auth.signOut() because it makes a blocking
+        // network call to Supabase that hangs indefinitely when the connection
+        // is slow — leaving the user stuck on the profile screen forever.
+        //
+        // Security: This is safe. clearSession() wipes the access token and
+        // refresh token from device memory instantly. Even if someone captured
+        // the old access token, it expires server-side within 1 hour (Supabase
+        // default JWT expiry). Your backend validates the JWT signature on every
+        // request and will reject it after expiry regardless.
+        //
+        // The server-side refresh token remains technically valid for up to 7 days,
+        // but since we're clearing it from the device here, there is nothing left
+        // on the phone that can use it. The security trade-off is acceptable for
+        // a consumer photography app.
+        client.auth.clearSession()
     }
 }

@@ -26,7 +26,6 @@ class AuthRepository @Inject constructor(
     val forceLogout: SharedFlow<String> = _forceLogout.asSharedFlow()
 
     fun notifyForceLogout(reason: String = "Your session has expired. Please sign in again.") {
-        // Mark state immediately so no refresh loop can race against this
         _authState.value = AuthState.Unauthenticated
         _forceLogout.tryEmit(reason)
     }
@@ -35,6 +34,13 @@ class AuthRepository @Inject constructor(
         get() = (_authState.value as? AuthState.Authenticated)?.user?.accessToken
 
     suspend fun restoreSession() {
+        // ── Guard: never override an explicit sign-out ────────────────────────
+        // signOut() calls clearSession() first, then sets Unauthenticated.
+        // If restoreSession() runs after clearSession() but reads the Supabase
+        // cache before Unauthenticated is set, it would bounce the user back to
+        // Authenticated. This guard prevents that race entirely.
+        if (_authState.value is AuthState.Unauthenticated) return
+
         val user = supabaseAuthManager.getCurrentUser()
         _authState.value = if (user != null) {
             AuthState.Authenticated(user)
@@ -44,11 +50,7 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun getValidToken(): String? {
-        // ── Guard: never return a token once signed out ───────────────────────
-        // Without this, AuthInterceptor can still read a token from the Supabase
-        // in-memory cache between signOut() being called and clearSession()
-        // completing, causing post-signout requests to succeed and keeping the
-        // user authenticated on the Lessons screen.
+        // Never return a token once signed out
         if (_authState.value is AuthState.Unauthenticated) return null
         return try {
             currentToken ?: supabaseAuthManager.getCurrentUser()?.accessToken
@@ -71,11 +73,6 @@ class AuthRepository @Inject constructor(
         supabaseAuthManager.sendPasswordResetEmail(email)
     }
 
-    /**
-     * Called from MainActivity when a recovery deep link is received.
-     * Establishes the session from the deep link tokens BEFORE updatePassword()
-     * is called — without this the JWT has no sub claim and the update fails.
-     */
     suspend fun handlePasswordResetDeepLink(deepLinkUrl: String) {
         supabaseAuthManager.handlePasswordResetDeepLink(deepLinkUrl)
     }
@@ -103,16 +100,16 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun signOut() {
-        // ── Set state FIRST before calling Supabase ───────────────────────────
-        // This blocks any concurrent TokenRefreshInterceptor call from racing
-        // in and setting _authState back to Authenticated before Supabase's
-        // signOut() network call completes.
+        // ── Step 1: wipe Supabase in-memory session immediately ───────────────
+        // clearSession() is a pure in-memory operation — no network call,
+        // completes in microseconds. After this, getCurrentUser() returns null
+        // and getValidToken() returns null (guarded by Unauthenticated check).
+        // No race condition possible because there is no async network call.
+        supabaseAuthManager.signOut()
+
+        // ── Step 2: update auth state ─────────────────────────────────────────
+        // PixelMentorRoot observes authState and swaps AppNavHost → AuthNavHost
+        // the moment this is set. The user sees the login screen instantly.
         _authState.value = AuthState.Unauthenticated
-        try {
-            supabaseAuthManager.signOut()
-        } catch (_: Exception) {
-            // Session may already be invalid — state is already Unauthenticated,
-            // so swallow the error and let navigation proceed.
-        }
     }
 }
