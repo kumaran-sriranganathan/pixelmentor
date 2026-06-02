@@ -130,8 +130,8 @@ fun LoginScreen(
                     // Shown when force-logout fires (e.g. 401 after token refresh
                     // fails, or manual sign-out). Uses a distinct amber/warning
                     // colour so it doesn't look like a login error.
-                    AnimatedVisibility(visible = sessionExpiredMessage != null) {
-                        if (sessionExpiredMessage != null) {
+                    AnimatedVisibility(visible = sessionExpiredMessage != null && sessionExpiredMessage.isNotEmpty()) {
+                        if (!sessionExpiredMessage.isNullOrEmpty()) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

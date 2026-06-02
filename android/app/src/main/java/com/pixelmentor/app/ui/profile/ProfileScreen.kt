@@ -42,30 +42,6 @@ fun ProfileScreen(
     val userEmail by viewModel.userEmail.collectAsState()
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
-    var isSigningOut by remember { mutableStateOf(false) }
-
-    // ── Signing out overlay ───────────────────────────────────────────────────
-    // Shown immediately when user confirms sign out — before the coroutine
-    // completes. Gives instant visual feedback so the screen never looks frozen.
-    if (isSigningOut) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                CircularProgressIndicator()
-                Text(
-                    "Signing out…",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        return
-    }
 
     Scaffold(
         topBar = {
@@ -151,8 +127,7 @@ fun ProfileScreen(
                 confirmButton = {
                     Button(onClick = {
                         showSignOutDialog = false
-                        isSigningOut = true
-                        viewModel.signOut(onSignOut)
+                        viewModel.signOut()
                     }) {
                         Text("Sign Out")
                     }

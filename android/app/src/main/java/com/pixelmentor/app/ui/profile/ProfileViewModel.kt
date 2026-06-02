@@ -2,6 +2,7 @@ package com.pixelmentor.app.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pixelmentor.app.data.auth.AuthRepository
 import com.pixelmentor.app.data.auth.SupabaseAuthManager
 import com.pixelmentor.app.data.repository.ProfileRepository
 import com.pixelmentor.app.domain.model.ProfileUiState
@@ -22,7 +23,8 @@ sealed class DeleteAccountState {
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val repository: ProfileRepository,
-    private val authManager: SupabaseAuthManager
+    private val authManager: SupabaseAuthManager,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
@@ -34,8 +36,6 @@ class ProfileViewModel @Inject constructor(
     private val _userEmail = MutableStateFlow<String>("")
     val userEmail: StateFlow<String> = _userEmail.asStateFlow()
 
-    // Track which user ID the current state belongs to.
-    // If the authenticated user changes we reload immediately.
     private var loadedUserId: String? = null
 
     init {
@@ -54,12 +54,10 @@ class ProfileViewModel @Inject constructor(
                 return@launch
             }
 
-            // If we already loaded for this user skip the network call
             if (loadedUserId == user.id && _uiState.value is ProfileUiState.Success) {
                 return@launch
             }
 
-            // Clear stale state from a previous user before loading
             if (loadedUserId != null && loadedUserId != user.id) {
                 _uiState.value = ProfileUiState.Loading
                 _userEmail.value = ""
@@ -71,9 +69,6 @@ class ProfileViewModel @Inject constructor(
             repository.getProfile(user.id).fold(
                 onSuccess = { _uiState.value = ProfileUiState.Success(it) },
                 onFailure = { error ->
-                    // ── Distinguish timeout vs generic failure ─────────────────
-                    // Gives the user an actionable message rather than a raw
-                    // exception string, and avoids infinite spinner on cold starts.
                     val message = when {
                         error is java.net.SocketTimeoutException ||
                         error.message?.contains("timeout", ignoreCase = true) == true ->
@@ -90,17 +85,22 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    fun signOut(onSignedOut: () -> Unit) {
-        viewModelScope.launch {
-            // ── Clear all state before signing out ────────────────────────────
-            // This prevents the next user seeing this user's profile data
-            // if the ViewModel instance is reused.
-            _uiState.value = ProfileUiState.Loading
-            _userEmail.value = ""
-            loadedUserId = null
+    fun signOut() {
+        // ── Instant sign-out — no coroutine, no network, no hang ─────────────
+        // notifyForceLogout() does two things synchronously:
+        //   1. Sets _authState.value = Unauthenticated (a MutableStateFlow
+        //      assignment — completes in nanoseconds on the calling thread)
+        //   2. Emits to forceLogout SharedFlow (caught in MainActivity but
+        //      not needed here — the authState change alone triggers the
+        //      PixelMentorRoot when/Unauthenticated branch instantly)
+        //
+        // The Supabase session is cleared in the background after the user
+        // is already on the Login screen — they never see a hang.
+        authRepository.notifyForceLogout("") // empty string = no banner message
 
-            authManager.signOut()
-            onSignedOut()
+        // Clear session in background — fire and forget, user is already gone
+        viewModelScope.launch {
+            try { authManager.signOut() } catch (_: Exception) { }
         }
     }
 
@@ -114,11 +114,10 @@ class ProfileViewModel @Inject constructor(
             }
             repository.deleteAccount(user.id).fold(
                 onSuccess = {
-                    // Clear state then sign out
-                    _uiState.value = ProfileUiState.Loading
-                    _userEmail.value = ""
-                    loadedUserId = null
-                    authManager.signOut()
+                    authRepository.notifyForceLogout("")
+                    viewModelScope.launch {
+                        try { authManager.signOut() } catch (_: Exception) { }
+                    }
                     _deleteAccountState.value = DeleteAccountState.Success
                     onDeleted()
                 },
