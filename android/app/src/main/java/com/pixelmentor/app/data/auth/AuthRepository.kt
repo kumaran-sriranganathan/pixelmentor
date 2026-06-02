@@ -52,7 +52,7 @@ class AuthRepository @Inject constructor(
     suspend fun getValidToken(): String? {
         // Never return a token once signed out
         if (_authState.value is AuthState.Unauthenticated) return null
-        return try {
+         return try {
             currentToken ?: supabaseAuthManager.getCurrentUser()?.accessToken
         } catch (e: Exception) {
             null
