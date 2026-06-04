@@ -1,5 +1,7 @@
 package com.pixelmentor.app.data.api
 
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 import com.pixelmentor.app.domain.model.Lesson
 import com.pixelmentor.app.domain.model.Plan
 import com.pixelmentor.app.domain.model.PhotoAnalysisRequest
@@ -56,6 +58,9 @@ interface PixelMentorApiService {
 
     @DELETE("api/v1/users/{userId}")
     suspend fun deleteAccount(@Path("userId") userId: String): DeleteAccountResponseDto
+
+    @GET("api/v1/analyze/usage")
+    suspend fun getPhotoUsage(): PhotoUsageDto
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -124,6 +129,8 @@ data class UserProfileDto(
         displayName = display_name,
         skillLevel = SkillLevel.from(skill_level),
         photosAnalyzed = photos_analyzed,
+        photosAnalyzedThisMonth = 0,
+        photosAllTime = photos_analyzed,
         lessonsCompleted = lessons_completed,
         streakDays = streak_days,
         plan = Plan.from(plan),
@@ -152,4 +159,12 @@ data class ChatRequest(
     val message: String,
     val session_id: String,
     val topic: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class PhotoUsageDto(
+    @Json(name = "photos_used_this_month") val photosUsedThisMonth: Int,
+    @Json(name = "photos_limit") val photosLimit: Int,
+    @Json(name = "photos_remaining") val photosRemaining: Int,
+    @Json(name = "plan") val plan: String,
 )

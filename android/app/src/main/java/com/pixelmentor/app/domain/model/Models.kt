@@ -44,6 +44,8 @@ data class UserProfile(
     val displayName: String,
     val skillLevel: SkillLevel,
     val photosAnalyzed: Int,
+    val photosAnalyzedThisMonth: Int,
+    val photosAllTime: Int,
     val lessonsCompleted: Int,
     val streakDays: Int,
     val plan: Plan,
