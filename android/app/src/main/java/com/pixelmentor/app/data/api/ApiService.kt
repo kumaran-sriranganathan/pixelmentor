@@ -1,7 +1,5 @@
 package com.pixelmentor.app.data.api
 
-import com.squareup.moshi.Json
-import com.squareup.moshi.JsonClass
 import com.pixelmentor.app.domain.model.Lesson
 import com.pixelmentor.app.domain.model.Plan
 import com.pixelmentor.app.domain.model.PhotoAnalysisRequest
@@ -161,10 +159,9 @@ data class ChatRequest(
     val topic: String? = null,
 )
 
-@JsonClass(generateAdapter = true)
 data class PhotoUsageDto(
-    @Json(name = "photos_used_this_month") val photosUsedThisMonth: Int,
-    @Json(name = "photos_limit") val photosLimit: Int,
-    @Json(name = "photos_remaining") val photosRemaining: Int,
-    @Json(name = "plan") val plan: String,
+    val photos_used_this_month: Int,
+    val photos_limit: Int,
+    val photos_remaining: Int,
+    val plan: String,
 )

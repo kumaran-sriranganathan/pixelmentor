@@ -25,7 +25,7 @@ class ProfileRepository @Inject constructor(
             // toDomain() called once and cached — avoids redundant object creation
             val profile = dto.toDomain()
             val merged = profile.copy(
-                photosAnalyzedThisMonth = usage?.photosUsedThisMonth ?: 0,
+                photosAnalyzedThisMonth = usage?.photos_used_this_month ?: 0,
                 photosAllTime = profile.photosAnalyzed,
             )
             Result.success(merged)
