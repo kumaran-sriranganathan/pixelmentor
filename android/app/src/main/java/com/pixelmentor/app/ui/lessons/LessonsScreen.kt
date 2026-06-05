@@ -41,6 +41,12 @@ fun LessonsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Refresh lessons + completions every time this screen enters composition
+    // (e.g. returning from a completed lesson) so the green tick stays in sync
+    LaunchedEffect(Unit) {
+        viewModel.loadLessons()
+    }
+
     LaunchedEffect(uiState) {
         if (uiState is LessonsUiState.Unauthorized) {
             onSignOut()
