@@ -36,8 +36,6 @@ class ProfileViewModel @Inject constructor(
     private val _userEmail = MutableStateFlow<String>("")
     val userEmail: StateFlow<String> = _userEmail.asStateFlow()
 
-    private var loadedUserId: String? = null
-
     init {
         loadProfile()
     }
@@ -49,21 +47,10 @@ class ProfileViewModel @Inject constructor(
             val user = authManager.getCurrentUser()
             if (user == null) {
                 _uiState.value = ProfileUiState.Error("Not signed in")
-                loadedUserId = null
                 _userEmail.value = ""
                 return@launch
             }
 
-            if (loadedUserId == user.id && _uiState.value is ProfileUiState.Success) {
-                return@launch
-            }
-
-            if (loadedUserId != null && loadedUserId != user.id) {
-                _uiState.value = ProfileUiState.Loading
-                _userEmail.value = ""
-            }
-
-            loadedUserId = user.id
             _userEmail.value = user.email ?: ""
 
             repository.getProfile(user.id).fold(

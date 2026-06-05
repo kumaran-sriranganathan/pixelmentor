@@ -43,6 +43,11 @@ fun ProfileScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
 
+    // Refresh stats every time this screen enters composition (e.g. tab switch)
+    LaunchedEffect(Unit) {
+        viewModel.loadProfile()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -187,7 +192,7 @@ private fun ProfileContent(
         ProfileHeader(profile = profile)
         StatsRow(profile = profile)
         SkillLevelCard(skillLevel = profile.skillLevel)
-        PlanCard(plan = profile.plan, onUpgrade = onUpgrade)
+        PlanCard(plan = profile.plan, photosUsed = profile.photosAnalyzedThisMonth, onUpgrade = onUpgrade)
         ActivitySection(profile = profile)
         SupportSection(userEmail = userEmail, plan = profile.plan.value)
         DeleteAccountSection(onDeleteAccount = onDeleteAccount)
@@ -273,33 +278,90 @@ private fun ProfileHeader(profile: UserProfile) {
 
 @Composable
 private fun StatsRow(profile: UserProfile) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        StatCard(
-            modifier = Modifier.weight(1f),
-            value = profile.photosAnalyzed.toString(),
-            label = "Photos\nAnalyzed",
-            icon = Icons.Outlined.CameraAlt,
-            color = MaterialTheme.colorScheme.primary
-        )
-        StatCard(
-            modifier = Modifier.weight(1f),
-            value = profile.lessonsCompleted.toString(),
-            label = "Lessons\nCompleted",
-            icon = Icons.Outlined.MenuBook,
-            color = MaterialTheme.colorScheme.secondary
-        )
-        StatCard(
-            modifier = Modifier.weight(1f),
-            value = "${profile.streakDays}d",
-            label = "Current\nStreak",
-            icon = Icons.Outlined.Whatshot,
-            color = Color(0xFFF59E0B)
-        )
+        // Top row: monthly photos + lessons + streak
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                value = profile.photosAnalyzedThisMonth.toString(),
+                label = "Photos\nThis Month",
+                icon = Icons.Outlined.CameraAlt,
+                color = MaterialTheme.colorScheme.primary
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                value = profile.lessonsCompleted.toString(),
+                label = "Lessons\nCompleted",
+                icon = Icons.Outlined.MenuBook,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                value = "${profile.streakDays}d",
+                label = "Current\nStreak",
+                icon = Icons.Outlined.Whatshot,
+                color = Color(0xFFF59E0B)
+            )
+        }
+
+        // All-time photos card — full width, visually distinct
+        AllTimePhotosCard(totalPhotos = profile.photosAllTime)
+    }
+}
+
+@Composable
+private fun AllTimePhotosCard(totalPhotos: Int) {
+    val color = MaterialTheme.colorScheme.primary
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = color.copy(alpha = 0.05f)
+        ),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.15f)),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Icon(
+                Icons.Outlined.PhotoLibrary,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(22.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Total Photos Analyzed",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "All time across every session",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+            Text(
+                text = totalPhotos.toString(),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = color
+            )
+        }
     }
 }
 
@@ -311,12 +373,6 @@ private fun StatCard(
     icon: ImageVector,
     color: Color
 ) {
-    val animatedValue by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = tween(800, easing = FastOutSlowInEasing),
-        label = "stat"
-    )
-
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
@@ -457,8 +513,14 @@ private fun SkillLevelCard(skillLevel: SkillLevel) {
 // Plan card
 // ─────────────────────────────────────────────────────────────────────────────
 
+private const val FREE_PLAN_MONTHLY_LIMIT = 7
+
 @Composable
-private fun PlanCard(plan: Plan, onUpgrade: () -> Unit = {}) {
+private fun PlanCard(
+    plan: Plan,
+    photosUsed: Int,
+    onUpgrade: () -> Unit = {},
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -473,61 +535,130 @@ private fun PlanCard(plan: Plan, onUpgrade: () -> Unit = {}) {
         ),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = when (plan) {
-                            Plan.FREE -> "🆓"
-                            Plan.PRO -> "⚡"
-                            Plan.PREMIUM -> "👑"
-                        },
-                        fontSize = 22.sp
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = when (plan) {
+                                Plan.FREE -> "🆓"
+                                Plan.PRO -> "⚡"
+                                Plan.PREMIUM -> "👑"
+                            },
+                            fontSize = 22.sp
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "${plan.label} Plan",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = when (plan) {
+                                Plan.FREE -> "Upgrade for unlimited features"
+                                Plan.PRO -> "Advanced lessons + photo analysis"
+                                Plan.PREMIUM -> "Everything + unlimited tutor"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-                Column {
-                    Text(
-                        text = "${plan.label} Plan",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = when (plan) {
-                            Plan.FREE -> "Upgrade for unlimited features"
-                            Plan.PRO -> "Advanced lessons + photo analysis"
-                            Plan.PREMIUM -> "Everything + unlimited tutor"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                if (plan == Plan.FREE) {
+                    FilledTonalButton(
+                        onClick = onUpgrade,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            "Upgrade",
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
+
+            // ── Monthly usage bar (free plan only) ───────────────────────
             if (plan == Plan.FREE) {
-                FilledTonalButton(
-                    onClick = onUpgrade,
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        "Upgrade",
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1
-                    )
-                }
+                Spacer(Modifier.height(14.dp))
+                PhotoUsageBar(used = photosUsed, limit = FREE_PLAN_MONTHLY_LIMIT)
             }
+        }
+    }
+}
+
+@Composable
+private fun PhotoUsageBar(used: Int, limit: Int) {
+    val fraction = (used.toFloat() / limit).coerceIn(0f, 1f)
+    val isNearLimit = used >= limit - 1
+    val barColor = if (isNearLimit) MaterialTheme.colorScheme.error
+                   else MaterialTheme.colorScheme.primary
+
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = tween(800, easing = FastOutSlowInEasing),
+        label = "usageBar"
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Photo analyses this month",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "$used / $limit",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = barColor
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(animatedFraction)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(barColor.copy(alpha = 0.7f), barColor)
+                        )
+                    )
+            )
+        }
+        if (isNearLimit) {
+            Text(
+                text = if (used >= limit) "Limit reached — resets on the 1st"
+                       else "1 analysis remaining this month",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
         }
     }
 }
@@ -551,8 +682,8 @@ private fun ActivitySection(profile: UserProfile) {
         ActivityRow(
             icon = Icons.Outlined.CameraAlt,
             title = "Photos Analyzed",
-            subtitle = "AI-powered composition feedback",
-            value = profile.photosAnalyzed.toString(),
+            subtitle = "${profile.photosAnalyzedThisMonth} this month · ${profile.photosAllTime} all time",
+            value = profile.photosAllTime.toString(),
             color = MaterialTheme.colorScheme.primary
         )
         ActivityRow(

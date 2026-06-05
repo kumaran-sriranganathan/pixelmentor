@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # ── Plan-based limits ─────────────────────────────────────────────────────
     # Photo analyses per month
-    free_photo_analyses_per_month: int = 10
+    free_photo_analyses_per_month: int = 7
     pro_photo_analyses_per_month: int = 30
     premium_photo_analyses_per_month: int = 999999  # effectively unlimited
 
