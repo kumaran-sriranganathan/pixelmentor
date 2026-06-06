@@ -59,6 +59,9 @@ interface PixelMentorApiService {
 
     @GET("api/v1/analyze/usage")
     suspend fun getPhotoUsage(): PhotoUsageDto
+
+    @GET("api/v1/tutor/quiz/usage")
+    suspend fun getQuizUsage(): QuizUsageDto
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -163,5 +166,11 @@ data class PhotoUsageDto(
     val photos_used_this_month: Int,
     val photos_limit: Int,
     val photos_remaining: Int,
+    val plan: String,
+)
+
+data class QuizUsageDto(
+    val quizzes_used_this_month: Int,
+    val quiz_limit: Int,
     val plan: String,
 )
