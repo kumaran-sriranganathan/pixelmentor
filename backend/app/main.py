@@ -12,6 +12,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
+import logging
 from app.config import settings
 from app.middleware.rate_limiter import RateLimitMiddleware
 from app.routers import analyze, tutor, lessons, users, health
