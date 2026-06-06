@@ -237,7 +237,7 @@ private fun ContentLoadingPlaceholder(durationMinutes: Int) {
                 tint = MaterialTheme.colorScheme.primary
             )
             Text(
-                "Generating $durationMinutes-minute lesson…",
+                "Loading $durationMinutes-minute lesson…",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )

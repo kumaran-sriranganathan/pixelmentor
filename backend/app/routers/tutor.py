@@ -307,6 +307,22 @@ async def tutor_chat(
     )
 
 
+@router.get("/quiz/usage")
+async def get_quiz_usage(
+    current_user: dict = Depends(get_current_user),
+):
+    """Return monthly quiz usage and limit for the current user."""
+    user_id = current_user["sub"]
+    plan = await service.get_user_plan(user_id)
+    quiz_limit = settings.get_quiz_limit(plan)
+    quiz_attempts = await service.get_quiz_attempts_this_month(user_id)
+    return {
+        "quizzes_used_this_month": quiz_attempts,
+        "quiz_limit": quiz_limit,
+        "plan": plan,
+    }
+
+
 @router.post("/quiz")
 async def generate_quiz(
     request: QuizRequest,

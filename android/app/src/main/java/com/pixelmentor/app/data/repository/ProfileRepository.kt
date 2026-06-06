@@ -13,20 +13,26 @@ class ProfileRepository @Inject constructor(
 ) {
     suspend fun getProfile(userId: String): Result<UserProfile> = try {
         coroutineScope {
-            // Fetch profile and usage data in parallel
+            // Fetch profile, photo usage, and quiz usage all in parallel
             val profileDeferred = async { apiService.getUser(userId) }
             val usageDeferred = async {
                 try { apiService.getPhotoUsage() } catch (_: Exception) { null }
             }
+            val quizUsageDeferred = async {
+                try { apiService.getQuizUsage() } catch (_: Exception) { null }
+            }
 
             val dto = profileDeferred.await()
             val usage = usageDeferred.await()
+            val quizUsage = quizUsageDeferred.await()
 
             // toDomain() called once and cached — avoids redundant object creation
             val profile = dto.toDomain()
             val merged = profile.copy(
                 photosAnalyzedThisMonth = usage?.photos_used_this_month ?: 0,
                 photosAllTime = profile.photosAnalyzed,
+                quizzesUsedThisMonth = quizUsage?.quizzes_used_this_month ?: 0,
+                quizLimit = quizUsage?.quiz_limit ?: 5,
             )
             Result.success(merged)
         }

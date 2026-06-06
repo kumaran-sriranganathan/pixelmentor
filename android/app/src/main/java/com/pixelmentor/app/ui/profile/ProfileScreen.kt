@@ -192,7 +192,7 @@ private fun ProfileContent(
         ProfileHeader(profile = profile)
         StatsRow(profile = profile)
         SkillLevelCard(skillLevel = profile.skillLevel)
-        PlanCard(plan = profile.plan, photosUsed = profile.photosAnalyzedThisMonth, onUpgrade = onUpgrade)
+        PlanCard(plan = profile.plan, photosUsed = profile.photosAnalyzedThisMonth, quizzesUsed = profile.quizzesUsedThisMonth, quizLimit = profile.quizLimit, onUpgrade = onUpgrade)
         ActivitySection(profile = profile)
         SupportSection(userEmail = userEmail, plan = profile.plan.value)
         DeleteAccountSection(onDeleteAccount = onDeleteAccount)
@@ -519,6 +519,8 @@ private const val FREE_PLAN_MONTHLY_LIMIT = 7
 private fun PlanCard(
     plan: Plan,
     photosUsed: Int,
+    quizzesUsed: Int,
+    quizLimit: Int,
     onUpgrade: () -> Unit = {},
 ) {
     Card(
@@ -593,10 +595,12 @@ private fun PlanCard(
                 }
             }
 
-            // ── Monthly usage bar (free plan only) ───────────────────────
+            // ── Monthly usage bars (free plan only) ──────────────────────────
             if (plan == Plan.FREE) {
                 Spacer(Modifier.height(14.dp))
                 PhotoUsageBar(used = photosUsed, limit = FREE_PLAN_MONTHLY_LIMIT)
+                Spacer(Modifier.height(10.dp))
+                QuizUsageBar(used = quizzesUsed, limit = quizLimit)
             }
         }
     }
@@ -658,6 +662,55 @@ private fun PhotoUsageBar(used: Int, limit: Int) {
                        else "1 analysis remaining this month",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuizUsageBar(used: Int, limit: Int) {
+    val fraction = (used.toFloat() / limit).coerceIn(0f, 1f)
+    val isNearLimit = used >= limit - 1
+    val barColor = if (isNearLimit) MaterialTheme.colorScheme.error
+                   else MaterialTheme.colorScheme.tertiary
+
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = tween(800, easing = FastOutSlowInEasing),
+        label = "quizUsageBar"
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Quiz attempts this month",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "$used / $limit",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = barColor
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(barColor.copy(alpha = 0.12f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animatedFraction)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(barColor)
             )
         }
     }

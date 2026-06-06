@@ -49,6 +49,8 @@ data class UserProfile(
     val lessonsCompleted: Int,
     val streakDays: Int,
     val plan: Plan,
+    val quizzesUsedThisMonth: Int = 0,
+    val quizLimit: Int = 5,
 )
 
 enum class Plan(val value: String, val label: String, val emoji: String) {
