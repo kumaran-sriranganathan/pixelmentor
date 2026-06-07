@@ -5,6 +5,7 @@ import com.pixelmentor.app.domain.model.AuthUser
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.createSupabaseClient
 import javax.inject.Inject
@@ -54,7 +55,7 @@ class SupabaseAuthManager @Inject constructor() {
      */
     suspend fun resendConfirmationEmail(email: String) {
         client.auth.resendEmail(
-            type = io.github.jan.supabase.auth.ResendEmailType.SignUp,
+            type = OtpType.Email.SIGNUP,
             email = email,
         )
     }
