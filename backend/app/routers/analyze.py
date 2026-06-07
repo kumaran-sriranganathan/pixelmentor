@@ -148,9 +148,7 @@ async def analyze_photo(
             "blob_path": blob_path,
         }).execute()
 
-        # NOTE: increment_photos_analyzed RPC removed — the monthly limit is enforced
-        # by counting rows in photo_analyses directly (get_photos_analyzed_this_month),
-        # so calling the RPC here was double-counting and causing 8/7-style overruns.
+        get_supabase_admin().rpc("increment_photos_analyzed", {"p_user_id": user_id}).execute()
 
     except Exception as e:
         logger.error(f"Failed to save analysis to Supabase: {e}")
@@ -160,10 +158,8 @@ async def analyze_photo(
     return result
 
 
-@router.get("/health")
-async def health_check():
-    """Keep-alive endpoint — pinged every 5 minutes to prevent Railway cold starts."""
-    return {"status": "ok"}
+# NOTE: /health is intentionally NOT here — it lives at the root app level in main.py
+# so Railway's health check hits GET /health directly, not /api/v1/analyze/health.
 
 
 @router.get("/history")

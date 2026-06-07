@@ -29,12 +29,14 @@ class SupabaseAuthManager @Inject constructor() {
         return getCurrentUser() ?: error("Sign in succeeded but no user found")
     }
 
-    suspend fun signUp(email: String, password: String): AuthUser {
+    suspend fun signUp(email: String, password: String) {
+        // signUpWith does NOT create a session when email confirmation is required —
+        // calling getCurrentUser() here would return null and throw.
+        // The session is only established after the user clicks the confirmation link.
         client.auth.signUpWith(Email) {
             this.email = email
             this.password = password
         }
-        return getCurrentUser() ?: error("Sign up succeeded but no user found")
     }
 
     /**
