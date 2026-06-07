@@ -129,29 +129,18 @@ class LoginViewModel @Inject constructor(
     // ── Reset password (after deep-link) ──────────────────────────────────────
 
     /**
-     * Exchanges the recovery tokens from the deep link URL for a valid session.
-     * Called from ResetPasswordScreen via LaunchedEffect as soon as the screen
-     * renders — must complete before the user taps Update Password.
-     */
-    /**
-     * Exchanges the deep link tokens for a valid session.
-     * - type=recovery → stay on ResetPasswordScreen so user can set new password
-     * - type=signup   → account is now verified; navigate straight into the app
+     * Exchanges recovery tokens from the deep link for a valid session.
+     * Only called for type=recovery links — type=signup is handled in MainActivity.
      */
     fun handlePasswordResetDeepLink(deepLinkUrl: String) {
         viewModelScope.launch {
             try {
-                val linkType = authRepository.handlePasswordResetDeepLink(deepLinkUrl)
-                if (linkType == "signup") {
-                    // Email confirmed — session is now valid, restore it so
-                    // authState flips to Authenticated and PixelMentorRoot
-                    // navigates to AppNavHost automatically
-                    authRepository.restoreSession()
-                }
-                // type=recovery: do nothing — ResetPasswordScreen stays visible
-                // and updatePassword() will use the imported session
+                authRepository.handlePasswordResetDeepLink(deepLinkUrl)
+                // Session is now imported — updatePassword() can proceed.
+                // ResetPasswordScreen stays visible, waiting for the user to
+                // enter their new password.
             } catch (e: Exception) {
-                Log.e("LoginViewModel", "Failed to handle deep link", e)
+                Log.e("LoginViewModel", "Failed to handle recovery deep link", e)
                 _resetPasswordState.update {
                     ResetPasswordUiState.Error("The link has expired. Please request a new one.")
                 }
