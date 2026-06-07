@@ -9,6 +9,11 @@ python-multipart==0.0.20
 
 # ── Settings + validation ─────────────────────────────────────────────────────
 pydantic-settings==2.9.1
+# packaging — explicitly listed so the multi-stage Docker build copies it to
+# the production image. Without this, gunicorn fails at startup with
+# ModuleNotFoundError because packaging is pre-installed in the builder base
+# image but skipped by pip's --prefix=/install flag.
+packaging
 
 # ── AI ───────────────────────────────────────────────────────────────────────
 # openai — pin to >= so Railway always gets the latest patch for the 1.x line
