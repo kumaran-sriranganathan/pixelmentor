@@ -148,7 +148,9 @@ async def analyze_photo(
             "blob_path": blob_path,
         }).execute()
 
-        get_supabase_admin().rpc("increment_photos_analyzed", {"p_user_id": user_id}).execute()
+        # NOTE: increment_photos_analyzed RPC removed — the monthly limit is enforced
+        # by counting rows in photo_analyses directly (get_photos_analyzed_this_month),
+        # so calling the RPC here was double-counting and causing 8/7-style overruns.
 
     except Exception as e:
         logger.error(f"Failed to save analysis to Supabase: {e}")

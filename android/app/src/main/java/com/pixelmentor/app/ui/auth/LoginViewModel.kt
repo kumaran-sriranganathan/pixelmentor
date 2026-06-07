@@ -76,7 +76,7 @@ class LoginViewModel @Inject constructor(
             _uiState.update { LoginUiState.SigningIn }
             try {
                 authRepository.signUp(email, password)
-                // Don't navigate to home — user must verify email first
+                // Account created — user must verify email before signing in
                 _uiState.update { LoginUiState.AwaitingEmailVerification(email) }
             } catch (e: Exception) {
                 Log.e("LoginViewModel", "Sign up failed", e)
@@ -88,7 +88,7 @@ class LoginViewModel @Inject constructor(
     fun resendVerificationEmail(email: String) {
         viewModelScope.launch {
             try {
-                authRepository.sendPasswordResetEmail(email) // resend via reset flow
+                authRepository.resendConfirmationEmail(email)
             } catch (_: Exception) {
                 // silent — user can try again
             }
@@ -133,12 +133,28 @@ class LoginViewModel @Inject constructor(
      * Called from ResetPasswordScreen via LaunchedEffect as soon as the screen
      * renders — must complete before the user taps Update Password.
      */
+    /**
+     * Exchanges the deep link tokens for a valid session.
+     * - type=recovery → stay on ResetPasswordScreen so user can set new password
+     * - type=signup   → account is now verified; navigate straight into the app
+     */
     fun handlePasswordResetDeepLink(deepLinkUrl: String) {
         viewModelScope.launch {
             try {
-                authRepository.handlePasswordResetDeepLink(deepLinkUrl)
+                val linkType = authRepository.handlePasswordResetDeepLink(deepLinkUrl)
+                if (linkType == "signup") {
+                    // Email confirmed — session is now valid, restore it so
+                    // authState flips to Authenticated and PixelMentorRoot
+                    // navigates to AppNavHost automatically
+                    authRepository.restoreSession()
+                }
+                // type=recovery: do nothing — ResetPasswordScreen stays visible
+                // and updatePassword() will use the imported session
             } catch (e: Exception) {
-                Log.e("LoginViewModel", "Failed to handle reset deep link", e)
+                Log.e("LoginViewModel", "Failed to handle deep link", e)
+                _resetPasswordState.update {
+                    ResetPasswordUiState.Error("The link has expired. Please request a new one.")
+                }
             }
         }
     }
@@ -181,12 +197,15 @@ private fun friendlyAuthError(e: Exception, isSignUp: Boolean): String {
     ) return "The request timed out. Please check your connection and try again."
 
     if (raw.contains("invalid login credentials") || raw.contains("invalid_credentials"))
-        return "Incorrect email or password. Please try again."
+        return if (isSignUp) "Couldn't create your account. Please check your details and try again."
+               else "Incorrect email or password. Please try again."
 
     if (raw.contains("email not confirmed") || raw.contains("email_not_confirmed"))
         return "Please verify your email address before signing in. Check your inbox for a confirmation link."
 
-    if (raw.contains("user not found") || raw.contains("no user found"))
+    // "user not found" can be returned by Supabase on sign-up for certain edge cases —
+    // never show "No account found" when the user is trying to register.
+    if (!isSignUp && (raw.contains("user not found") || raw.contains("no user found")))
         return "No account found with that email address."
 
     if (raw.contains("user already registered") ||
