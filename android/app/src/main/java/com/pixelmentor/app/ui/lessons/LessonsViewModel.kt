@@ -86,4 +86,16 @@ class LessonsViewModel @Inject constructor(
             }
         }
     }
+
+    /** Called when returning from LessonDetail — refreshes ticks without a full reload. */
+    fun reloadCompletions() {
+        val current = _uiState.value as? LessonsUiState.Success ?: run {
+            loadLessons(); return
+        }
+        viewModelScope.launch {
+            val completedIds = lessonsRepository.getCompletedLessonIds()
+                .let { if (it is Result.Success) it.data else return@launch }
+            _uiState.value = current.copy(completedIds = completedIds)
+        }
+    }
 }

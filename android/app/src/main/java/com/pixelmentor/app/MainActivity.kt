@@ -23,6 +23,8 @@ import com.pixelmentor.app.ui.auth.ForgotPasswordScreen
 import com.pixelmentor.app.ui.auth.LoginScreen
 import com.pixelmentor.app.ui.auth.ResetPasswordScreen
 import com.pixelmentor.app.ui.lessons.LessonsScreen
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.pixelmentor.app.ui.lessons.LessonsViewModel
 import com.pixelmentor.app.ui.lessons.LessonDetailScreen
 import com.pixelmentor.app.ui.tutor.TutorScreen
 import com.pixelmentor.app.ui.profile.ProfileScreen
@@ -67,20 +69,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Handle deep links before UI renders.
-        // type=recovery → pass url to ResetPasswordScreen to let user set new password
-        // type=signup   → exchange token and restore session immediately (no UI needed)
-        // We do NOT call handlePasswordResetDeepLink here for recovery links — that is
-        // done inside ResetPasswordScreen via LoginViewModel so the ViewModel can react.
+        // If launched by a password-reset deep link, exchange the recovery
+        // tokens BEFORE the UI renders so updatePassword() has a valid session.
         intent?.data?.let { uri ->
             if (uri.scheme == "io.supabase.pixelmentor") {
                 val fullUrl = uri.toString()
-                if (fullUrl.contains("type=signup")) {
+                if (fullUrl.contains("type=recovery") || fullUrl.contains("access_token=")) {
                     CoroutineScope(Dispatchers.IO).launch {
-                        val linkType = authRepository.handlePasswordResetDeepLink(fullUrl)
-                        if (linkType == "signup") {
-                            authRepository.restoreSession()
-                        }
+                        authRepository.handlePasswordResetDeepLink(fullUrl)
                     }
                 }
             }
@@ -102,17 +98,14 @@ class MainActivity : ComponentActivity() {
         intent.data?.let { uri ->
             if (uri.scheme == "io.supabase.pixelmentor") {
                 val fullUrl = uri.toString()
-                if (fullUrl.contains("type=signup")) {
+                if (fullUrl.contains("type=recovery") || fullUrl.contains("access_token=")) {
                     CoroutineScope(Dispatchers.IO).launch {
-                        val linkType = authRepository.handlePasswordResetDeepLink(fullUrl)
-                        if (linkType == "signup") {
-                            authRepository.restoreSession()
-                        }
+                        authRepository.handlePasswordResetDeepLink(fullUrl)
                     }
                 }
-                // type=recovery is handled by ResetPasswordScreen via LoginViewModel
             }
         }
+        recreate()
     }
 }
 
@@ -183,12 +176,10 @@ private fun AuthNavHost(
 ) {
     val navController = rememberNavController()
 
-    // Only route to ResetPasswordScreen for actual password recovery links.
-    // Signup confirmation links (type=signup) are handled in MainActivity before
-    // the UI renders — by the time AuthNavHost shows, authState will already be
-    // flipping to Authenticated, so we just show Login as the fallback.
+    // Determine start destination from deep link
     val startDestination = when {
-        deepLinkUrl?.contains("type=recovery") == true -> Routes.RESET_PASSWORD
+        deepLinkUrl?.contains("type=recovery") == true ||
+        deepLinkUrl?.contains("access_token=") == true -> Routes.RESET_PASSWORD
         else -> Routes.LOGIN
     }
 
@@ -243,19 +234,37 @@ private fun AppNavHost() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.LESSONS) {
+                val lessonsViewModel: LessonsViewModel = hiltViewModel()
+                // Reload completion ticks when returning from LessonDetail
+                val lessonCompleted = it.savedStateHandle
+                    .getStateFlow("lesson_completed", false)
+                    .collectAsStateWithLifecycle()
+                LaunchedEffect(lessonCompleted.value) {
+                    if (lessonCompleted.value) {
+                        lessonsViewModel.reloadCompletions()
+                        it.savedStateHandle["lesson_completed"] = false
+                    }
+                }
                 LessonsScreen(
                     onSignOut = { /* authState handles nav — no-op needed */ },
                     onAnalyzePhoto = { navController.navigate(AnalysisRoutes.PICKER) },
                     onLessonClick = { lessonId ->
                         navController.navigate(Routes.lessonDetail(lessonId))
-                    }
+                    },
+                    viewModel = lessonsViewModel,
                 )
             }
 
             composable(Routes.LESSON_DETAIL) {
                 LessonDetailScreen(
                     onBack = { navController.popBackStack() },
-                    onUpgrade = { navController.navigate(Routes.UPGRADE) }
+                    onUpgrade = { navController.navigate(Routes.UPGRADE) },
+                    onLessonCompleted = {
+                        // Reload lessons so the green tick appears immediately on return
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("lesson_completed", true)
+                    }
                 )
             }
 

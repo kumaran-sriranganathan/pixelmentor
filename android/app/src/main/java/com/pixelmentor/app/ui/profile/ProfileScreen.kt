@@ -22,6 +22,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -43,9 +46,13 @@ fun ProfileScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
 
-    // Refresh stats every time this screen enters composition (e.g. tab switch)
-    LaunchedEffect(Unit) {
-        viewModel.loadProfile()
+    // Refresh stats every time this screen resumes (tab switch, back navigation)
+    // so lessons_completed and quiz counts are always current.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.loadProfile()
+        }
     }
 
     Scaffold(

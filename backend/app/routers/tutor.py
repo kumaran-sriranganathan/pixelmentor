@@ -316,11 +316,28 @@ async def get_quiz_usage(
     plan = await service.get_user_plan(user_id)
     quiz_limit = settings.get_quiz_limit(plan)
     quiz_attempts = await service.get_quiz_attempts_this_month(user_id)
+    quiz_completions = await service.get_quiz_completions_this_month(user_id)
     return {
         "quizzes_used_this_month": quiz_attempts,
+        "quizzes_completed_this_month": quiz_completions,
         "quiz_limit": quiz_limit,
         "plan": plan,
     }
+
+
+@router.post("/quiz/complete")
+async def record_quiz_completion(
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Records that the user completed a quiz (reached the results screen).
+    Separate from quiz_attempts which is recorded on generation — this is
+    only written when the user finishes all questions.
+    """
+    user_id = current_user["sub"]
+    await service.record_quiz_completion(user_id)
+    completions = await service.get_quiz_completions_this_month(user_id)
+    return {"quizzes_completed_this_month": completions}
 
 
 @router.post("/quiz")
