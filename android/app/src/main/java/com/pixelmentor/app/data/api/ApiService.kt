@@ -49,7 +49,10 @@ interface PixelMentorApiService {
     suspend fun getLessonContent(@Path("id") id: String): LessonContentDto
 
     @POST("api/v1/lessons/{id}/complete")
-    suspend fun markLessonComplete(@Path("id") id: String): MarkCompleteResponseDto
+    suspend fun markLessonComplete(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    ): MarkCompleteResponseDto
 
     @GET("api/v1/lessons/completions")
     suspend fun getCompletions(): CompletionsDto
