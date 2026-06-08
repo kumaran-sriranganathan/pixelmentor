@@ -98,6 +98,17 @@ class TutorRepository @Inject constructor(
         Result.failure(e)
     }
 
+    /**
+     * Records that the user completed a quiz (reached the results screen).
+     * Called from TutorViewModel when the last question is answered.
+     */
+    suspend fun recordQuizCompletion(topic: String, authToken: String): Result<Unit> = try {
+        apiService.recordQuizCompletion(authorization = "Bearer $authToken")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
     companion object {
         // Should match your Railway URL — injected via BuildConfig in a real setup
         private const val BASE_URL = "https://pixelmentor-production.up.railway.app/"

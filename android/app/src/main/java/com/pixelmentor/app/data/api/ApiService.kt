@@ -62,6 +62,11 @@ interface PixelMentorApiService {
 
     @GET("api/v1/tutor/quiz/usage")
     suspend fun getQuizUsage(): QuizUsageDto
+
+    @POST("api/v1/tutor/quiz/complete")
+    suspend fun recordQuizCompletion(
+        @Header("Authorization") authorization: String,
+    ): QuizCompletionDto
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -173,4 +178,8 @@ data class QuizUsageDto(
     val quizzes_used_this_month: Int,
     val quiz_limit: Int,
     val plan: String,
+)
+
+data class QuizCompletionDto(
+    val quizzes_completed_this_month: Int,
 )
