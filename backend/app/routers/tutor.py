@@ -313,6 +313,7 @@ async def get_quiz_usage(
 ):
     """Return monthly quiz usage and limit for the current user."""
     user_id = current_user["sub"]
+    service = SupabaseService()
     plan = await service.get_user_plan(user_id)
     quiz_limit = settings.get_quiz_limit(plan)
     quiz_attempts = await service.get_quiz_attempts_this_month(user_id)
@@ -335,6 +336,7 @@ async def record_quiz_completion(
     only written when the user finishes all questions.
     """
     user_id = current_user["sub"]
+    service = SupabaseService()
     await service.record_quiz_completion(user_id)
     completions = await service.get_quiz_completions_this_month(user_id)
     return {"quizzes_completed_this_month": completions}
