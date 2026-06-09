@@ -32,6 +32,7 @@ class ProfileRepository @Inject constructor(
                 photosAnalyzedThisMonth = usage?.photos_used_this_month ?: 0,
                 photosAllTime = profile.photosAnalyzed,
                 quizzesUsedThisMonth = quizUsage?.quizzes_used_this_month ?: 0,
+                quizzesCompletedThisMonth = quizUsage?.quizzes_completed_this_month ?: 0,
                 quizLimit = quizUsage?.quiz_limit ?: 5,
             )
             Result.success(merged)

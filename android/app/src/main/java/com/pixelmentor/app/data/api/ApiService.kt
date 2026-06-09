@@ -179,6 +179,7 @@ data class PhotoUsageDto(
 
 data class QuizUsageDto(
     val quizzes_used_this_month: Int,
+    val quizzes_completed_this_month: Int = 0,
     val quiz_limit: Int,
     val plan: String,
 )

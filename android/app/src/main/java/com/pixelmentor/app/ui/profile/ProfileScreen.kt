@@ -319,6 +319,22 @@ private fun StatsRow(profile: UserProfile) {
             )
         }
 
+        // Second row: quiz completions this month + all-time photos
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                value = profile.quizzesCompletedThisMonth.toString(),
+                label = "Quizzes\nCompleted",
+                icon = Icons.Outlined.School,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+            // Spacer cards to keep layout balanced
+            Spacer(modifier = Modifier.weight(2f))
+        }
+
         // All-time photos card — full width, visually distinct
         AllTimePhotosCard(totalPhotos = profile.photosAllTime)
     }

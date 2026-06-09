@@ -50,6 +50,7 @@ data class UserProfile(
     val streakDays: Int,
     val plan: Plan,
     val quizzesUsedThisMonth: Int = 0,
+    val quizzesCompletedThisMonth: Int = 0,
     val quizLimit: Int = 5,
 )
 
