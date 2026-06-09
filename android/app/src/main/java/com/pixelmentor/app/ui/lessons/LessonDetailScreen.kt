@@ -37,7 +37,7 @@ fun LessonDetailScreen(
     val isCompleted by viewModel.isCompleted.collectAsState()
     val isMarkingComplete by viewModel.isMarkingComplete.collectAsState()
 
-    // Notify caller when lesson is marked complete so the list can refresh its ticks
+    // Notify the lessons list to refresh its ticks the moment this lesson is marked done
     LaunchedEffect(isCompleted) {
         if (isCompleted) onLessonCompleted()
     }

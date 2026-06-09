@@ -23,11 +23,11 @@ import com.pixelmentor.app.ui.auth.ForgotPasswordScreen
 import com.pixelmentor.app.ui.auth.LoginScreen
 import com.pixelmentor.app.ui.auth.ResetPasswordScreen
 import com.pixelmentor.app.ui.lessons.LessonsScreen
-import androidx.hilt.navigation.compose.hiltViewModel
-import com.pixelmentor.app.ui.lessons.LessonsViewModel
 import com.pixelmentor.app.ui.lessons.LessonDetailScreen
 import com.pixelmentor.app.ui.tutor.TutorScreen
 import com.pixelmentor.app.ui.profile.ProfileScreen
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.pixelmentor.app.ui.lessons.LessonsViewModel
 import com.pixelmentor.app.ui.upgrade.UpgradeScreen
 import com.pixelmentor.app.ui.theme.PixelMentorTheme
 import com.pixelmentor.app.ui.navigation.AnalysisRoutes
@@ -69,8 +69,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Handle deep links before UI renders.
-        // type=signup  → email confirmed; exchange token and restore session immediately
+        // type=signup  → email confirmed; exchange token + restore session immediately
         // type=recovery → leave alone; ResetPasswordScreen handles it via LoginViewModel
         intent?.data?.let { uri ->
             if (uri.scheme == "io.supabase.pixelmentor") {
@@ -106,9 +105,10 @@ class MainActivity : ComponentActivity() {
                         if (linkType == "signup") authRepository.restoreSession()
                     }
                 }
-                // type=recovery is handled by ResetPasswordScreen via LoginViewModel
+                // type=recovery handled by ResetPasswordScreen via LoginViewModel
             }
         }
+        recreate()
     }
 }
 
@@ -239,16 +239,6 @@ private fun AppNavHost() {
         ) {
             composable(Routes.LESSONS) {
                 val lessonsViewModel: LessonsViewModel = hiltViewModel()
-                // Reload completion ticks when returning from LessonDetail
-                val lessonCompleted = it.savedStateHandle
-                    .getStateFlow("lesson_completed", false)
-                    .collectAsStateWithLifecycle()
-                LaunchedEffect(lessonCompleted.value) {
-                    if (lessonCompleted.value) {
-                        lessonsViewModel.reloadCompletions()
-                        it.savedStateHandle["lesson_completed"] = false
-                    }
-                }
                 LessonsScreen(
                     onSignOut = { /* authState handles nav — no-op needed */ },
                     onAnalyzePhoto = { navController.navigate(AnalysisRoutes.PICKER) },
@@ -260,15 +250,18 @@ private fun AppNavHost() {
             }
 
             composable(Routes.LESSON_DETAIL) {
+                // Grab the lessons back-stack entry so we can call reloadCompletions
+                // on the same ViewModel instance that drives LessonsScreen.
+                val lessonsEntry = remember(it) {
+                    try { navController.getBackStackEntry(Routes.LESSONS) } catch (_: Exception) { null }
+                }
+                val lessonsViewModel: LessonsViewModel? = lessonsEntry?.let { entry ->
+                    hiltViewModel(entry)
+                }
                 LessonDetailScreen(
                     onBack = { navController.popBackStack() },
                     onUpgrade = { navController.navigate(Routes.UPGRADE) },
-                    onLessonCompleted = {
-                        // Reload lessons so the green tick appears immediately on return
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("lesson_completed", true)
-                    }
+                    onLessonCompleted = { lessonsViewModel?.reloadCompletions() },
                 )
             }
 
