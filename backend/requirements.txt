@@ -22,7 +22,7 @@ openai>=1.75.0
 # ── Agentic AI ────────────────────────────────────────────────────────────────
 # langgraph 1.2.2 — major version jump from 0.2.x; fixes the
 # LangChainPendingDeprecationWarning visible in Railway startup logs.
-# The StateGraph / ainvoke API used in photo_coach.py is unchanged.
+# The StateGraph / ainvoke API used in photo_coach.py is notchanged.
 langgraph==1.2.2
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
