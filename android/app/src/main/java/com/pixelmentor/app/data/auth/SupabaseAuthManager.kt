@@ -5,6 +5,7 @@ import com.pixelmentor.app.domain.model.AuthUser
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.createSupabaseClient
 import javax.inject.Inject
@@ -28,12 +29,14 @@ class SupabaseAuthManager @Inject constructor() {
         return getCurrentUser() ?: error("Sign in succeeded but no user found")
     }
 
-    suspend fun signUp(email: String, password: String): AuthUser {
+    suspend fun signUp(email: String, password: String) {
+        // signUpWith does NOT create a session when email confirmation is required —
+        // calling getCurrentUser() here would return null and throw.
+        // The session is only established after the user clicks the confirmation link.
         client.auth.signUpWith(Email) {
             this.email = email
             this.password = password
         }
-        return getCurrentUser() ?: error("Sign up succeeded but no user found")
     }
 
     /**
@@ -48,32 +51,51 @@ class SupabaseAuthManager @Inject constructor() {
     }
 
     /**
-     * Exchanges the recovery token from the deep link URL for a valid session.
-     * Must be called BEFORE updatePassword() when handling a password reset deep link.
-     *
-     * The deep link arrives as:
-     *   io.supabase.pixelmentor://login-callback#access_token=xxx&refresh_token=yyy&type=recovery
-     *
-     * We extract the access_token and refresh_token from the fragment and use them
-     * to establish a session so updatePassword() has a valid JWT with a sub claim.
+     * Resends the email confirmation link for a user who hasn't verified yet.
+     * This sends a proper signup confirmation email — NOT a password reset email.
+     * Called when the user taps "Resend" on the AwaitingEmailVerification screen.
      */
-    suspend fun handlePasswordResetDeepLink(deepLinkUrl: String) {
+    suspend fun resendConfirmationEmail(email: String) {
+        client.auth.resendEmail(
+            type = OtpType.Email.SIGNUP,
+            email = email,
+        )
+    }
+
+    /**
+     * Handles both password reset and email confirmation deep links.
+     *
+     * Password reset link arrives as:
+     *   io.supabase.pixelmentor://login-callback#access_token=xxx&type=recovery
+     *
+     * Email confirmation link arrives as:
+     *   io.supabase.pixelmentor://login-callback#access_token=xxx&type=signup
+     *
+     * Both carry access_token + refresh_token in the fragment and need the same
+     * session import — but signup type means the account is now verified and we
+     * can sign the user straight in rather than showing the reset password screen.
+     * The caller (LoginViewModel) reads the returned type to decide what to do next.
+     *
+     * Returns the link type: "recovery", "signup", or "unknown".
+     */
+    suspend fun handlePasswordResetDeepLink(deepLinkUrl: String): String {
         try {
-            // Parse fragment params from the deep link URL
-            // Supabase sends tokens in the URL fragment (#) not query params (?)
             val fragment = deepLinkUrl.substringAfter("#", "")
-            if (fragment.isEmpty()) return
+            if (fragment.isEmpty()) return "unknown"
 
             val params = fragment.split("&").associate {
                 val parts = it.split("=", limit = 2)
                 parts[0] to (parts.getOrNull(1) ?: "")
             }
 
-            val accessToken = params["access_token"] ?: return
-            val refreshToken = params["refresh_token"] ?: return
+            val accessToken = params["access_token"] ?: return "unknown"
+            val refreshToken = params["refresh_token"] ?: return "unknown"
             val tokenType = params["token_type"] ?: "bearer"
+            val linkType = params["type"] ?: "unknown"
 
-            // Set the session directly using the tokens from the deep link
+            // Import the session regardless of type — both recovery and signup
+            // tokens need to be exchanged for a valid session before any further
+            // auth operations (updatePassword or getCurrentUser) will work.
             client.auth.importSession(
                 io.github.jan.supabase.auth.user.UserSession(
                     accessToken = accessToken,
@@ -83,9 +105,10 @@ class SupabaseAuthManager @Inject constructor() {
                     user = null,
                 )
             )
+            return linkType
         } catch (e: Exception) {
-            // Log but don't crash — updatePassword will fail with a clear error
-            android.util.Log.e("SupabaseAuthManager", "Failed to handle reset deep link: $e")
+            android.util.Log.e("SupabaseAuthManager", "Failed to handle deep link: $e")
+            return "unknown"
         }
     }
 

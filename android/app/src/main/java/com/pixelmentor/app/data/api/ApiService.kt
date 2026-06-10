@@ -49,7 +49,10 @@ interface PixelMentorApiService {
     suspend fun getLessonContent(@Path("id") id: String): LessonContentDto
 
     @POST("api/v1/lessons/{id}/complete")
-    suspend fun markLessonComplete(@Path("id") id: String): MarkCompleteResponseDto
+    suspend fun markLessonComplete(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String,
+    ): MarkCompleteResponseDto
 
     @GET("api/v1/lessons/completions")
     suspend fun getCompletions(): CompletionsDto
@@ -59,6 +62,14 @@ interface PixelMentorApiService {
 
     @GET("api/v1/analyze/usage")
     suspend fun getPhotoUsage(): PhotoUsageDto
+
+    @GET("api/v1/tutor/quiz/usage")
+    suspend fun getQuizUsage(): QuizUsageDto
+
+    @POST("api/v1/tutor/quiz/complete")
+    suspend fun recordQuizCompletion(
+        @Header("Authorization") authorization: String,
+    ): QuizCompletionDto
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -164,4 +175,15 @@ data class PhotoUsageDto(
     val photos_limit: Int,
     val photos_remaining: Int,
     val plan: String,
+)
+
+data class QuizUsageDto(
+    val quizzes_used_this_month: Int,
+    val quizzes_completed_this_month: Int = 0,
+    val quiz_limit: Int,
+    val plan: String,
+)
+
+data class QuizCompletionDto(
+    val quizzes_completed_this_month: Int,
 )

@@ -26,6 +26,8 @@ import com.pixelmentor.app.ui.lessons.LessonsScreen
 import com.pixelmentor.app.ui.lessons.LessonDetailScreen
 import com.pixelmentor.app.ui.tutor.TutorScreen
 import com.pixelmentor.app.ui.profile.ProfileScreen
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.pixelmentor.app.ui.lessons.LessonsViewModel
 import com.pixelmentor.app.ui.upgrade.UpgradeScreen
 import com.pixelmentor.app.ui.theme.PixelMentorTheme
 import com.pixelmentor.app.ui.navigation.AnalysisRoutes
@@ -67,14 +69,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // If launched by a password-reset deep link, exchange the recovery
-        // tokens BEFORE the UI renders so updatePassword() has a valid session.
+        // type=signup  → email confirmed; exchange token + restore session immediately
+        // type=recovery → leave alone; ResetPasswordScreen handles it via LoginViewModel
         intent?.data?.let { uri ->
             if (uri.scheme == "io.supabase.pixelmentor") {
                 val fullUrl = uri.toString()
-                if (fullUrl.contains("type=recovery") || fullUrl.contains("access_token=")) {
+                if (fullUrl.contains("type=signup")) {
                     CoroutineScope(Dispatchers.IO).launch {
-                        authRepository.handlePasswordResetDeepLink(fullUrl)
+                        val linkType = authRepository.handlePasswordResetDeepLink(fullUrl)
+                        if (linkType == "signup") authRepository.restoreSession()
                     }
                 }
             }
@@ -96,11 +99,13 @@ class MainActivity : ComponentActivity() {
         intent.data?.let { uri ->
             if (uri.scheme == "io.supabase.pixelmentor") {
                 val fullUrl = uri.toString()
-                if (fullUrl.contains("type=recovery") || fullUrl.contains("access_token=")) {
+                if (fullUrl.contains("type=signup")) {
                     CoroutineScope(Dispatchers.IO).launch {
-                        authRepository.handlePasswordResetDeepLink(fullUrl)
+                        val linkType = authRepository.handlePasswordResetDeepLink(fullUrl)
+                        if (linkType == "signup") authRepository.restoreSession()
                     }
                 }
+                // type=recovery handled by ResetPasswordScreen via LoginViewModel
             }
         }
         recreate()
@@ -174,10 +179,11 @@ private fun AuthNavHost(
 ) {
     val navController = rememberNavController()
 
-    // Determine start destination from deep link
+    // Only route to ResetPasswordScreen for password recovery links.
+    // Signup confirmation links (type=signup) are handled in MainActivity before
+    // the UI renders — authState will already be flipping to Authenticated.
     val startDestination = when {
-        deepLinkUrl?.contains("type=recovery") == true ||
-        deepLinkUrl?.contains("access_token=") == true -> Routes.RESET_PASSWORD
+        deepLinkUrl?.contains("type=recovery") == true -> Routes.RESET_PASSWORD
         else -> Routes.LOGIN
     }
 
@@ -232,19 +238,30 @@ private fun AppNavHost() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.LESSONS) {
+                val lessonsViewModel: LessonsViewModel = hiltViewModel()
                 LessonsScreen(
                     onSignOut = { /* authState handles nav — no-op needed */ },
                     onAnalyzePhoto = { navController.navigate(AnalysisRoutes.PICKER) },
                     onLessonClick = { lessonId ->
                         navController.navigate(Routes.lessonDetail(lessonId))
-                    }
+                    },
+                    viewModel = lessonsViewModel,
                 )
             }
 
             composable(Routes.LESSON_DETAIL) {
+                // Grab the lessons back-stack entry so we can call reloadCompletions
+                // on the same ViewModel instance that drives LessonsScreen.
+                val lessonsEntry = remember(it) {
+                    try { navController.getBackStackEntry(Routes.LESSONS) } catch (_: Exception) { null }
+                }
+                val lessonsViewModel: LessonsViewModel? = lessonsEntry?.let { entry ->
+                    hiltViewModel(entry)
+                }
                 LessonDetailScreen(
                     onBack = { navController.popBackStack() },
-                    onUpgrade = { navController.navigate(Routes.UPGRADE) }
+                    onUpgrade = { navController.navigate(Routes.UPGRADE) },
+                    onLessonCompleted = { lessonsViewModel?.reloadCompletions() },
                 )
             }
 

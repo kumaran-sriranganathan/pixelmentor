@@ -390,7 +390,7 @@ private fun SourceButton(
 private fun AnalyzingOverlay(state: AnalysisUiState) {
     val label = when (state) {
         is AnalysisUiState.Uploading -> "Preparing image…"
-        else -> "Analyzing with AI…"
+        else -> "Analyzing Photo…"
     }
     val sublabel = when (state) {
         is AnalysisUiState.Uploading -> "Compressing and encoding"

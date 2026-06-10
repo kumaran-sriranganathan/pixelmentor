@@ -20,7 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy and install Python dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir --prefix=/install -r requirements.txt
+    && pip install --no-cache-dir --prefix=/install -r requirements.txt \
+    && pip install --no-cache-dir --prefix=/install --ignore-installed packaging
 
 # ── Stage 2: Production image ─────────────────────────────────────────────────
 FROM python:3.12-slim AS production
@@ -34,7 +35,7 @@ RUN groupadd --gid 1001 appgroup \
     && useradd --uid 1001 --gid appgroup --shell /bin/bash --create-home appuser
 
 WORKDIR /app
-# Force rebuild - cache bust 2026-04-21
+# Force rebuild - cache bust 2026-06-09
 
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local

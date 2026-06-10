@@ -94,6 +94,32 @@ class SupabaseService:
         except Exception:
             return 0
 
+    async def get_quiz_completions_this_month(self, user_id: str) -> int:
+        """Count quizzes fully completed by the user in the current calendar month."""
+        try:
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+            response = (
+                self._admin.table("quiz_completions")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .gte("created_at", month_start)
+                .execute()
+            )
+            return response.count or 0
+        except Exception:
+            return 0
+
+    async def record_quiz_completion(self, user_id: str) -> None:
+        """Record that the user completed a quiz (reached results screen)."""
+        try:
+            self._admin.table("quiz_completions").insert({
+                "user_id": user_id,
+            }).execute()
+        except Exception:
+            pass  # non-fatal
+
     async def record_quiz_attempt(self, user_id: str, topic: str) -> None:
         """Record a quiz attempt for rate limiting purposes."""
         try:

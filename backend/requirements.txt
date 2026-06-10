@@ -9,6 +9,11 @@ python-multipart==0.0.20
 
 # ── Settings + validation ─────────────────────────────────────────────────────
 pydantic-settings==2.9.1
+# packaging — explicitly listed so the multi-stage Docker build copies it to
+# the production image. Without this, gunicorn fails at startup with
+# ModuleNotFoundError because packaging is pre-installed in the builder base
+# image but skipped by pip's --prefix=/install flag.
+packaging
 
 # ── AI ───────────────────────────────────────────────────────────────────────
 # openai — pin to >= so Railway always gets the latest patch for the 1.x line
@@ -17,7 +22,7 @@ openai>=1.75.0
 # ── Agentic AI ────────────────────────────────────────────────────────────────
 # langgraph 1.2.2 — major version jump from 0.2.x; fixes the
 # LangChainPendingDeprecationWarning visible in Railway startup logs.
-# The StateGraph / ainvoke API used in photo_coach.py is unchanged.
+# The StateGraph / ainvoke API used in photo_coach.py is notchanged.
 langgraph==1.2.2
 
 # ── Auth ─────────────────────────────────────────────────────────────────────

@@ -158,10 +158,8 @@ async def analyze_photo(
     return result
 
 
-@router.get("/health")
-async def health_check():
-    """Keep-alive endpoint — pinged every 5 minutes to prevent Railway cold starts."""
-    return {"status": "ok"}
+# NOTE: /health is intentionally NOT here — it lives at the root app level in main.py
+# so Railway's health check hits GET /health directly, not /api/v1/analyze/health.
 
 
 @router.get("/history")

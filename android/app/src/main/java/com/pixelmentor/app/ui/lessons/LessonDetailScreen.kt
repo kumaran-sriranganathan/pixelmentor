@@ -28,6 +28,7 @@ import com.pixelmentor.app.domain.model.SkillLevel
 fun LessonDetailScreen(
     onBack: () -> Unit,
     onUpgrade: () -> Unit,
+    onLessonCompleted: () -> Unit = {},
     viewModel: LessonDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -35,6 +36,11 @@ fun LessonDetailScreen(
     val isLoadingContent by viewModel.isLoadingContent.collectAsState()
     val isCompleted by viewModel.isCompleted.collectAsState()
     val isMarkingComplete by viewModel.isMarkingComplete.collectAsState()
+
+    // Notify the lessons list to refresh its ticks the moment this lesson is marked done
+    LaunchedEffect(isCompleted) {
+        if (isCompleted) onLessonCompleted()
+    }
 
     Scaffold(
         topBar = {
@@ -237,7 +243,7 @@ private fun ContentLoadingPlaceholder(durationMinutes: Int) {
                 tint = MaterialTheme.colorScheme.primary
             )
             Text(
-                "Generating $durationMinutes-minute lesson…",
+                "Loading $durationMinutes-minute lesson…",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )

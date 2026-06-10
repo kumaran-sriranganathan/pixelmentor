@@ -22,6 +22,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -43,9 +46,13 @@ fun ProfileScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
 
-    // Refresh stats every time this screen enters composition (e.g. tab switch)
-    LaunchedEffect(Unit) {
-        viewModel.loadProfile()
+    // Refresh stats every time this screen resumes (tab switch, back navigation)
+    // so lessons_completed and quiz counts are always current.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.loadProfile()
+        }
     }
 
     Scaffold(
@@ -192,7 +199,7 @@ private fun ProfileContent(
         ProfileHeader(profile = profile)
         StatsRow(profile = profile)
         SkillLevelCard(skillLevel = profile.skillLevel)
-        PlanCard(plan = profile.plan, photosUsed = profile.photosAnalyzedThisMonth, onUpgrade = onUpgrade)
+        PlanCard(plan = profile.plan, photosUsed = profile.photosAnalyzedThisMonth, quizzesUsed = profile.quizzesUsedThisMonth, quizLimit = profile.quizLimit, onUpgrade = onUpgrade)
         ActivitySection(profile = profile)
         SupportSection(userEmail = userEmail, plan = profile.plan.value)
         DeleteAccountSection(onDeleteAccount = onDeleteAccount)
@@ -310,6 +317,22 @@ private fun StatsRow(profile: UserProfile) {
                 icon = Icons.Outlined.Whatshot,
                 color = Color(0xFFF59E0B)
             )
+        }
+
+        // Second row: quiz completions this month + all-time photos
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                value = profile.quizzesCompletedThisMonth.toString(),
+                label = "Quizzes\nCompleted",
+                icon = Icons.Outlined.School,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+            // Spacer cards to keep layout balanced
+            Spacer(modifier = Modifier.weight(2f))
         }
 
         // All-time photos card — full width, visually distinct
@@ -519,6 +542,8 @@ private const val FREE_PLAN_MONTHLY_LIMIT = 7
 private fun PlanCard(
     plan: Plan,
     photosUsed: Int,
+    quizzesUsed: Int,
+    quizLimit: Int,
     onUpgrade: () -> Unit = {},
 ) {
     Card(
@@ -593,10 +618,12 @@ private fun PlanCard(
                 }
             }
 
-            // ── Monthly usage bar (free plan only) ───────────────────────
+            // ── Monthly usage bars (free plan only) ──────────────────────────
             if (plan == Plan.FREE) {
                 Spacer(Modifier.height(14.dp))
                 PhotoUsageBar(used = photosUsed, limit = FREE_PLAN_MONTHLY_LIMIT)
+                Spacer(Modifier.height(10.dp))
+                QuizUsageBar(used = quizzesUsed, limit = quizLimit)
             }
         }
     }
@@ -658,6 +685,55 @@ private fun PhotoUsageBar(used: Int, limit: Int) {
                        else "1 analysis remaining this month",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuizUsageBar(used: Int, limit: Int) {
+    val fraction = (used.toFloat() / limit).coerceIn(0f, 1f)
+    val isNearLimit = used >= limit - 1
+    val barColor = if (isNearLimit) MaterialTheme.colorScheme.error
+                   else MaterialTheme.colorScheme.tertiary
+
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = tween(800, easing = FastOutSlowInEasing),
+        label = "quizUsageBar"
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Quiz attempts this month",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "$used / $limit",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = barColor
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(barColor.copy(alpha = 0.12f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animatedFraction)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(barColor)
             )
         }
     }

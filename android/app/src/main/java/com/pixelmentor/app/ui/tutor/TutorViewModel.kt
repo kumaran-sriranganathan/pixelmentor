@@ -221,6 +221,8 @@ class TutorViewModel @Inject constructor(
                 showExplanation = false,
                 selectedAnswer = null
             )
+            // Record the completion so the profile quiz count updates
+            recordQuizCompletion(state.quiz.topic)
         } else {
             _quizState.value = state.copy(
                 currentIndex = nextIndex,
@@ -228,6 +230,17 @@ class TutorViewModel @Inject constructor(
                 showExplanation = false,
                 score = newScore
             )
+        }
+    }
+
+    private fun recordQuizCompletion(topic: String) {
+        viewModelScope.launch {
+            try {
+                val token = authManager.getCurrentUser()?.accessToken ?: return@launch
+                repository.recordQuizCompletion(topic = topic, authToken = token)
+            } catch (_: Exception) {
+                // Non-fatal — quiz result is shown regardless
+            }
         }
     }
 

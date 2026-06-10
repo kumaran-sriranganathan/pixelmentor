@@ -1,6 +1,7 @@
 package com.pixelmentor.app.data.repository
 
 import com.pixelmentor.app.data.api.PixelMentorApiService
+import com.pixelmentor.app.data.auth.SupabaseAuthManager
 import com.pixelmentor.app.domain.model.AppException
 import com.pixelmentor.app.domain.model.Lesson
 import com.pixelmentor.app.domain.model.LessonDetail
@@ -14,6 +15,7 @@ import javax.inject.Singleton
 @Singleton
 class LessonsRepository @Inject constructor(
     private val api: PixelMentorApiService,
+    private val authManager: SupabaseAuthManager,
 ) {
     suspend fun getLessons(skillLevel: SkillLevel? = null): Result<List<Lesson>> {
         return safeApiCall {
@@ -46,7 +48,9 @@ class LessonsRepository @Inject constructor(
 
     suspend fun markLessonComplete(id: String): Result<Unit> {
         return safeApiCall {
-            api.markLessonComplete(id)
+            val token = authManager.getCurrentUser()?.accessToken
+                ?: throw IOException("Not authenticated")
+            api.markLessonComplete(authorization = "Bearer $token", id = id)
             Unit
         }
     }

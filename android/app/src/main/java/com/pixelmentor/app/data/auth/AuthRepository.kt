@@ -65,16 +65,28 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun signUp(email: String, password: String) {
-        val user = supabaseAuthManager.signUp(email, password)
-        _authState.value = AuthState.Authenticated(user)
+        // Don't set Authenticated here — Supabase requires email verification
+        // before the account is usable. The user stays Unauthenticated until
+        // they click the confirmation link, which comes back as a type=signup
+        // deep link and triggers handlePasswordResetDeepLink → Authenticated.
+        supabaseAuthManager.signUp(email, password)
+    }
+
+    suspend fun resendConfirmationEmail(email: String) {
+        supabaseAuthManager.resendConfirmationEmail(email)
     }
 
     suspend fun sendPasswordResetEmail(email: String) {
         supabaseAuthManager.sendPasswordResetEmail(email)
     }
 
-    suspend fun handlePasswordResetDeepLink(deepLinkUrl: String) {
-        supabaseAuthManager.handlePasswordResetDeepLink(deepLinkUrl)
+    /**
+     * Handles both recovery and signup deep links. Returns the link type so
+     * the caller can decide whether to show the reset-password screen ("recovery")
+     * or navigate straight into the app ("signup" — account now verified).
+     */
+    suspend fun handlePasswordResetDeepLink(deepLinkUrl: String): String {
+        return supabaseAuthManager.handlePasswordResetDeepLink(deepLinkUrl)
     }
 
     suspend fun updatePassword(newPassword: String) {
