@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     supabase_service_key: str = ""
     supabase_jwt_secret: str = ""
+    supabase_hook_secret: str = ""  # Auth Hook secret — set in Railway + Supabase dashboard
 
     # ── Cloudflare R2 ─────────────────────────────────────────────────────────
     cloudflare_account_id: str = ""

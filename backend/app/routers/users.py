@@ -4,13 +4,63 @@
 
 import asyncio
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from app.middleware.auth import get_current_user
 from app.utils.supabase_client import SupabaseService, get_supabase_admin
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.post("/signup-check")
+async def signup_check(request: Request):
+    """
+    Supabase Auth Hook — called before every new sign-up.
+    Blocks re-registration from deleted accounts to prevent free tier abuse.
+
+    Supabase sends: { "event": "signup", "user": { "email": "..." }, "secrets": "..." }
+    Return 200 with {} to allow, or raise HTTPException to block.
+    """
+    try:
+        body = await request.json()
+
+        # ── Verify the request is from Supabase ───────────────────────────────
+        hook_secret = settings.supabase_hook_secret
+        if hook_secret:
+            incoming_secret = body.get("secrets", "")
+            if incoming_secret != hook_secret:
+                logger.warning("signup-check called with invalid hook secret")
+                raise HTTPException(status_code=401, detail="Unauthorized")
+
+        # ── Check blocklist ───────────────────────────────────────────────────
+        email = body.get("user", {}).get("email", "").lower().strip()
+        if not email:
+            return {}
+
+        supabase = get_supabase_admin()
+        result = supabase.table("deleted_accounts") \
+            .select("email") \
+            .eq("email", email) \
+            .limit(1) \
+            .execute()
+
+        if result.data:
+            logger.warning(f"Blocked re-registration attempt for deleted email={email}")
+            raise HTTPException(
+                status_code=422,
+                detail="This email address is not eligible for registration."
+            )
+
+        return {}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Signup check error: {e}")
+        # Fail open — don't block legitimate sign-ups due to our own errors
+        return {}
 
 
 class UserProfile(BaseModel):
@@ -86,7 +136,8 @@ async def delete_account(
             "photo_analyses",
             "chat_history",
             "skill_profiles",
-            "quiz_cache",       # only user-specific rows if any
+            "quiz_attempts",
+            "quiz_completions",
             "user_profiles",
         ]
 
@@ -101,6 +152,23 @@ async def delete_account(
                 # Log but continue — don't fail the whole deletion if one
                 # table delete fails (e.g. table doesn't have user_id column)
                 logger.warning(f"Failed to delete from {table} for user_id={user_id}: {e}")
+
+        # ── Record email in blocklist before deleting auth user ───────────────
+        # This prevents the user from re-registering with the same email to
+        # bypass plan limits (e.g. use up free tier, delete, re-register).
+        # Must be done before auth.admin.delete_user() since that wipes the
+        # email from auth.users.
+        try:
+            email = current_user.get("email")
+            if email:
+                supabase.table("deleted_accounts").insert({
+                    "email": email.lower().strip(),
+                }, count=None).execute()
+                logger.info(f"Recorded deleted email={email} in blocklist")
+        except Exception as e:
+            # 23505 = unique violation — email already in blocklist, that's fine
+            if "23505" not in str(e):
+                logger.warning(f"Failed to record deleted account email: {e}")
 
         # ── Delete the Supabase Auth user ──────────────────────────────────
         # This uses the admin auth API — requires service key
