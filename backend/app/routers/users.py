@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from app.middleware.auth import get_current_user
 from app.utils.supabase_client import SupabaseService, get_supabase_admin
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -135,7 +136,8 @@ async def delete_account(
             "photo_analyses",
             "chat_history",
             "skill_profiles",
-            "quiz_cache",       # only user-specific rows if any
+            "quiz_attempts",
+            "quiz_completions",
             "user_profiles",
         ]
 
@@ -159,13 +161,14 @@ async def delete_account(
         try:
             email = current_user.get("email")
             if email:
-                supabase.table("deleted_accounts").upsert({
+                supabase.table("deleted_accounts").insert({
                     "email": email.lower().strip(),
-                }).execute()
+                }, count=None).execute()
                 logger.info(f"Recorded deleted email={email} in blocklist")
         except Exception as e:
-            # Non-fatal — log and continue with deletion
-            logger.warning(f"Failed to record deleted account email: {e}")
+            # 23505 = unique violation — email already in blocklist, that's fine
+            if "23505" not in str(e):
+                logger.warning(f"Failed to record deleted account email: {e}")
 
         # ── Delete the Supabase Auth user ──────────────────────────────────
         # This uses the admin auth API — requires service key
