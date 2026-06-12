@@ -19,11 +19,21 @@ async def signup_check(request: Request):
     Supabase Auth Hook — called before every new sign-up.
     Blocks re-registration from deleted accounts to prevent free tier abuse.
 
-    Supabase sends: { "event": "signup", "user": { "email": "..." } }
+    Supabase sends: { "event": "signup", "user": { "email": "..." }, "secrets": "..." }
     Return 200 with {} to allow, or raise HTTPException to block.
     """
     try:
         body = await request.json()
+
+        # ── Verify the request is from Supabase ───────────────────────────────
+        hook_secret = settings.supabase_hook_secret
+        if hook_secret:
+            incoming_secret = body.get("secrets", "")
+            if incoming_secret != hook_secret:
+                logger.warning("signup-check called with invalid hook secret")
+                raise HTTPException(status_code=401, detail="Unauthorized")
+
+        # ── Check blocklist ───────────────────────────────────────────────────
         email = body.get("user", {}).get("email", "").lower().strip()
         if not email:
             return {}
