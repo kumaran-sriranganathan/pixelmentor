@@ -129,9 +129,8 @@ class LoginViewModel @Inject constructor(
     // ── Reset password (after deep-link) ──────────────────────────────────────
 
     /**
-     * Exchanges the recovery tokens from the deep link URL for a valid session.
-     * Called from ResetPasswordScreen via LaunchedEffect as soon as the screen
-     * renders — must complete before the user taps Update Password.
+     * Exchanges recovery tokens from the deep link for a valid session.
+     * Only called for type=recovery links — type=signup is handled in MainActivity.
      */
     /**
      * Exchanges the deep link tokens for a valid session.
