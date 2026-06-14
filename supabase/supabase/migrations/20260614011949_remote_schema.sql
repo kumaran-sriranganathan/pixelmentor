@@ -1013,3 +1013,41 @@ using ((auth.uid() = user_id));
 CREATE TRIGGER lessons_search_vector_trigger BEFORE INSERT OR UPDATE ON public.lessons FOR EACH ROW EXECUTE FUNCTION public.lessons_search_vector_update();
 
 
+create or replace function public.check_deleted_account(event jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  signup_email text;
+begin
+  signup_email := lower(trim(event->'user'->>'email'));
+
+  if signup_email is null or signup_email = '' then
+    return '{}'::jsonb;  -- no email to check, allow
+  end if;
+
+  if exists (
+    select 1 from public.deleted_accounts
+    where lower(trim(email)) = signup_email
+  ) then
+    return jsonb_build_object(
+      'error', jsonb_build_object(
+        'http_code', 422,
+        'message', 'This email address is not eligible for registration.'
+      )
+    );
+  end if;
+
+  return '{}'::jsonb;
+exception
+  when others then
+    -- fail open, matching the original endpoint's behaviour:
+    -- don't block legitimate signups due to our own errors
+    return '{}'::jsonb;
+end;
+$$;
+
+grant execute on function public.check_deleted_account to supabase_auth_admin;
+revoke execute on function public.check_deleted_account from authenticated, anon, public;
