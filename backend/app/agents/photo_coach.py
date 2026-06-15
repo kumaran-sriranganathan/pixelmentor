@@ -187,13 +187,20 @@ async def embed_and_recommend(state: PhotoCoachState) -> PhotoCoachState:
 
         search_term = " | ".join(categories) if categories else query_text[:50]
 
+        # ── Column fix ───────────────────────────────────────────────────────
+        # The lessons table uses `difficulty` (not `skill_level`) and has no
+        # `thumbnail_url` column. Selecting those caused a 400
+        # (`column lessons.skill_level does not exist`), so recommendations
+        # always returned empty. Select only columns that exist.
+        SELECT_COLS = "id, title, description, duration_minutes, difficulty"
+
         # ── supabase-py v2 removed the `config` kwarg from text_search() ─────
         # Use the plain two-argument form. If the search_vector column doesn't
         # exist or FTS fails for any reason, fall back to a simple ilike search
         # on title so the user always gets some lesson recommendations.
         try:
             result = supabase.table("lessons") \
-                .select("id, title, description, duration_minutes, skill_level, thumbnail_url") \
+                .select(SELECT_COLS) \
                 .text_search("search_vector", search_term) \
                 .limit(3) \
                 .execute()
@@ -201,7 +208,7 @@ async def embed_and_recommend(state: PhotoCoachState) -> PhotoCoachState:
             # Fallback: plain title search using the first category keyword
             fallback_term = categories[0] if categories else query_text[:20]
             result = supabase.table("lessons") \
-                .select("id, title, description, duration_minutes, skill_level, thumbnail_url") \
+                .select(SELECT_COLS) \
                 .ilike("title", f"%{fallback_term}%") \
                 .limit(3) \
                 .execute()
@@ -210,10 +217,9 @@ async def embed_and_recommend(state: PhotoCoachState) -> PhotoCoachState:
             {
                 "id": row["id"],
                 "title": row["title"],
-                "description": row["description"],
+                "description": row.get("description", ""),
                 "duration_minutes": row.get("duration_minutes", 10),
-                "skill_level": row.get("skill_level", "intermediate"),
-                "thumbnail_url": row.get("thumbnail_url", ""),
+                "difficulty": row.get("difficulty", "intermediate"),
                 "relevance_score": 1.0,
             }
             for row in (result.data or [])
@@ -297,16 +303,34 @@ class PhotoCoachAgent:
 
         final_state = await self.graph.ainvoke(initial_state)
 
+        # ── Score must be an int ─────────────────────────────────────────────
+        # The client model declares composition_score as Int and a strict JSON
+        # parser (Moshi) rejects a float like 70.0, which makes the whole
+        # response fail to parse — so the result screen shows no score and no
+        # error. Cast to int here so the wire value is always an integer.
+        composition_score = int(round(final_state.get("composition_score") or 0))
+
+        # ── Build lesson recommendations defensively ─────────────────────────
+        # If a row's shape doesn't match the LessonRecommendation model, skip
+        # that single recommendation rather than letting it raise and blank the
+        # entire analysis result.
+        lesson_recs: List[LessonRecommendation] = []
+        for l in final_state.get("lesson_recommendations", []):
+            try:
+                lesson_recs.append(LessonRecommendation(**l))
+            except Exception as e:
+                logger.warning(
+                    f"[{analysis_id}] Skipping malformed lesson recommendation: {e}"
+                )
+
         return PhotoAnalysisResponse(
             analysis_id=analysis_id,
-            composition_score=final_state["composition_score"] or 0,
+            composition_score=composition_score,
             feedback=[
                 FeedbackItem(**f) for f in final_state["feedback_items"]
             ],
             edit_suggestions=EditSuggestion(**final_state["edit_suggestions"])
             if final_state["edit_suggestions"] else None,
-            lesson_recommendations=[
-                LessonRecommendation(**l) for l in final_state["lesson_recommendations"]
-            ],
+            lesson_recommendations=lesson_recs,
             vision_tags=final_state.get("vision_metadata", {}).get("tags", []),
         )
