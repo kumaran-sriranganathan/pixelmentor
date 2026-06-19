@@ -44,8 +44,17 @@ class TutorViewModel @Inject constructor(
     private val _selectedTopic = MutableStateFlow(photographyTopics.first())
     val selectedTopic: StateFlow<String> = _selectedTopic.asStateFlow()
 
-    // ── Cache warming ─────────────────────────────────────────────────────────
-
+    // ── Cache warming (removed) ───────────────────────────────────────────────
+    // This flow is now vestigial and always false. Cache warming used to call
+    // the metered /tutor/quiz endpoint to pre-fill the shared quiz_cache, but
+    // that recorded a quiz *attempt* on screen entry and on every topic tap —
+    // inflating quizzes_used_this_month (which is checked against the monthly
+    // limit) and paying OpenAI to generate quizzes users never took. The
+    // quiz_cache is keyed by topic+difficulty and shared across all users, so
+    // it self-warms from real usage. Kept here only so TutorScreen compiles
+    // unchanged; safe to delete along with its UI references (the Start button
+    // `enabled = !quizCacheWarming` and the warming spinner) next time you
+    // touch TutorScreen.
     private val _quizCacheWarming = MutableStateFlow(false)
     val quizCacheWarming: StateFlow<Boolean> = _quizCacheWarming.asStateFlow()
 
@@ -67,23 +76,9 @@ class TutorViewModel @Inject constructor(
         _showQuizUpgradeDialog.value = false
     }
 
-    init {
-        // Warm the cache for the default topic as soon as the ViewModel is created
-        warmQuizCache(photographyTopics.first())
-    }
-
-    private fun warmQuizCache(topic: String) {
-        viewModelScope.launch {
-            _quizCacheWarming.value = true
-            try {
-                val token = authManager.getCurrentUser()?.accessToken ?: return@launch
-                repository.generateQuiz(topic = topic, authToken = token)
-            } catch (_: Exception) {
-            } finally {
-                _quizCacheWarming.value = false
-            }
-        }
-    }
+    // NOTE: there is intentionally no init{} cache-warming call here anymore.
+    // A quiz is generated (and an attempt recorded) only when the user
+    // explicitly taps Start Quiz — see startQuiz().
 
     // ── Chat actions ──────────────────────────────────────────────────────────
 
@@ -152,11 +147,18 @@ class TutorViewModel @Inject constructor(
     // ── Quiz actions ──────────────────────────────────────────────────────────
 
     fun onTopicSelected(topic: String) {
+        // Selecting a topic only updates UI state. It must NOT call the metered
+        // quiz endpoint — the quiz is generated only when the user taps Start.
         _selectedTopic.value = topic
-        warmQuizCache(topic) // Pre-warm cache so Start Quiz is instant
     }
 
     fun startQuiz() {
+        // Guard against double-tap / re-entry. Without this, tapping Start twice
+        // (the button is not disabled during generation) would fire two
+        // generateQuiz calls and record two attempts. Mirrors the guard in
+        // sendMessage().
+        if (_quizState.value is QuizUiState.Loading) return
+
         val topic = _selectedTopic.value
         _quizState.value = QuizUiState.Loading
 
