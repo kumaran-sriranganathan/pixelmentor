@@ -241,7 +241,7 @@ private fun AppNavHost() {
                 val lessonsViewModel: LessonsViewModel = hiltViewModel()
                 LessonsScreen(
                     onSignOut = { /* authState handles nav — no-op needed */ },
-                    onAnalyzePhoto = { navController.navigate(AnalysisRoutes.PICKER) },
+                    onAnalyzePhoto = { navController.navigate(AnalysisRoutes.GRAPH) },
                     onLessonClick = { lessonId ->
                         navController.navigate(Routes.lessonDetail(lessonId))
                     },

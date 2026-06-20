@@ -18,7 +18,7 @@ sealed class BottomNavItem(
         icon = Icons.Outlined.AutoStories
     )
     object Analyze : BottomNavItem(
-        route = AnalysisRoutes.PICKER,
+        route = AnalysisRoutes.GRAPH,
         label = "Analyze",
         icon = Icons.Outlined.CameraAlt
     )

@@ -419,13 +419,18 @@ async def generate_quiz(
         # Increment hit counter (fire and forget)
         background_tasks.add_task(_increment_hits, topic, difficulty)
 
-        # Record quiz attempt for rate limiting
-        background_tasks.add_task(service.record_quiz_attempt, user_id, topic)
+        # Sample questions first — only record attempt if we have valid questions
+        sampled = _sample_questions(pool, num_questions)
+        if not sampled:
+            raise HTTPException(status_code=500, detail="Failed to sample questions from pool")
+
+        # Record attempt inline — not as background task so timeout won't count
+        await service.record_quiz_attempt(user_id, topic)
 
         return {
             "quiz_id": str(uuid.uuid4()),
             "topic": request.topic,
-            "questions": _sample_questions(pool, num_questions),
+            "questions": sampled,
             "from_cache": True,
         }
 
@@ -433,11 +438,14 @@ async def generate_quiz(
     logger.info(f"Cache miss for topic='{topic}' difficulty='{difficulty}' — generating pool")
     questions = await _generate_question_pool(topic, difficulty, skill_level)
 
+    if not questions:
+        raise HTTPException(status_code=500, detail="Failed to generate quiz questions")
+
     # Store in background so response isn't delayed by the DB write
     background_tasks.add_task(_store_pool, topic, difficulty, questions)
 
-    # Record quiz attempt for rate limiting
-    background_tasks.add_task(service.record_quiz_attempt, user_id, topic)
+    # Record attempt inline after successful generation — timeout won't count
+    await service.record_quiz_attempt(user_id, topic)
 
     return {
         "quiz_id": str(uuid.uuid4()),
