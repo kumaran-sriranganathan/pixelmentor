@@ -30,13 +30,13 @@ android {
         applicationId = "com.pixelmentor.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 20
-        versionName = "1.2.0"
+        versionCode = 21
+        versionName = "1.2.1"
 
         buildConfigField("String", "ENTRA_CLIENT_ID", "\"51c1a8ba-2b07-4d99-bd91-4652081f7b41\"")
         buildConfigField("String", "ENTRA_TENANT_ID", "\"260b8d50-600d-47d4-b73c-e094c1674813\"")
-        buildConfigField("String", "API_BASE_URL_DEV",  "\"https://pixelmentor-production.up.railway.app/\"")
-        buildConfigField("String", "API_BASE_URL_PROD", "\"https://pixelmentor-production.up.railway.app/\"")
+        buildConfigField("String", "API_BASE_URL_DEV", "\"https://pixelmentor-production.up.railway.app/\"")
+        buildConfigField("String", "API_BASE_URL_PROD", "\"https://pixelmentor-production-5e4b.up.railway.app/\"")
         buildConfigField("String", "SUPABASE_URL", "\"https://sevikgqyffziljftqabd.supabase.co\"")
         buildConfigField("String", "SUPABASE_ANON_KEY",     "\"${secret("SUPABASE_ANON_KEY")}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID",  "\"${secret("GOOGLE_WEB_CLIENT_ID")}\"")
