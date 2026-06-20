@@ -2,6 +2,7 @@
 <network-security-config>
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">pixelmentor-production.up.railway.app</domain>
+        <domain includeSubdomains="true">pixelmentor-production-5e4b.up.railway.app</domain>
         <domain includeSubdomains="true">supabase.co</domain>
     </domain-config>
     <base-config cleartextTrafficPermitted="false" />
