@@ -50,9 +50,11 @@ fun PixelMentorBottomBar(navController: NavController) {
                         navController.navigate(item.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
+                                inclusive = false
                             }
                             launchSingleTop = true
-                            restoreState = true
+                            // Don't restore state for Lessons — always show fresh screen
+                            restoreState = item.route != Routes.LESSONS
                         }
                     },
                     icon = {
