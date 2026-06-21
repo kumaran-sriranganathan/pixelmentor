@@ -371,7 +371,7 @@ enum class UpgradePlan(
         price = "$9.99",
         features = listOf(
             PlanFeature("All Pro lessons", "30+ advanced lessons unlocked", included = true),
-            PlanFeature("Unlimited photo analysis", "Full GPT-4o vision feedback", included = true),
+            PlanFeature("Unlimited photo analysis", "Full AI vision feedback", included = true),
             PlanFeature("AI Tutor", "Chat with your photography coach", included = true),
             PlanFeature("Lesson completion tracking", "Track your progress", included = true),
             PlanFeature("Quiz & assessments", "Test your knowledge", included = true),
@@ -387,7 +387,7 @@ enum class UpgradePlan(
             PlanFeature("Everything in Pro", "All Pro features included", included = true),
             PlanFeature("Unlimited AI Tutor sessions", "No daily limits", included = true),
             PlanFeature("Before/after comparison", "Compare your photo improvements", included = true),
-            PlanFeature("Priority analysis", "Faster GPT-4o responses", included = true),
+            PlanFeature("Priority analysis", "Faster AI powered responses", included = true),
             PlanFeature("Early access to new features", "Be first to try new tools", included = true),
             PlanFeature("Export analysis reports", "Save and share your feedback", included = true),
         )
