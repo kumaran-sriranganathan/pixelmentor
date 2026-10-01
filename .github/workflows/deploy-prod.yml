@@ -87,7 +87,7 @@ jobs:
   # ─────────────────────────────────────────────
   # 3. Build Signed Release AAB
   # Builds the signed Android App Bundle for
-  # deployment to Google Play Production track.
+  # upload to Google Play Production track.
   # ─────────────────────────────────────────────
   build-release:
     name: Build Release AAB
@@ -104,9 +104,6 @@ jobs:
           java-version: "17"
           distribution: "temurin"
           cache: gradle
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Write local.properties
         working-directory: android
