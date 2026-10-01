@@ -87,7 +87,7 @@ jobs:
   # ─────────────────────────────────────────────
   # 3. Build Signed Release AAB
   # Builds the signed Android App Bundle for
-  # upload to Google Play Production track.
+  # deployment to Google Play Production track.
   # ─────────────────────────────────────────────
   build-release:
     name: Build Release AAB
