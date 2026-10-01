@@ -60,8 +60,6 @@ jobs:
 
   # ─────────────────────────────────────────────
   # 2. Verify Production Railway Deployment
-  # Railway auto-deploys on push to main branch.
-  # This step verifies the deployment is healthy.
   # ─────────────────────────────────────────────
   verify-deployment:
     name: Verify Prod Deployment
@@ -86,8 +84,6 @@ jobs:
 
   # ─────────────────────────────────────────────
   # 3. Build Signed Release AAB
-  # Builds the signed Android App Bundle for
-  # upload to Google Play Production track.
   # ─────────────────────────────────────────────
   build-release:
     name: Build Release AAB
@@ -114,6 +110,10 @@ jobs:
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/keystore.jks
+
+      - name: Make gradlew executable
+        working-directory: android
+        run: chmod +x gradlew
 
       - name: Build Release AAB
         working-directory: android
