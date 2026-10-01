@@ -1055,3 +1055,4 @@ revoke execute on function public.check_deleted_account from authenticated, anon
 drop policy "Service role can insert quiz attempts" on public.quiz_attempts;
 drop policy "Service role can insert quiz completions" on public.quiz_completions;
 drop policy "Service role can manage quiz cache" on public.quiz_cache;
+
